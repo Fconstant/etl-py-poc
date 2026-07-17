@@ -13,6 +13,7 @@ class UniversityModel(BaseModel):
     state_province: str
     domains: list[str]
     web_pages: list[str]
+    alpha_two_code: str
 
     @model_validator(mode="before")
     @classmethod
@@ -22,7 +23,8 @@ class UniversityModel(BaseModel):
         return {
             "name": data.get("name", ""),
             "country": data.get("country", ""),
-            "state_province": data.get("state-province", ""),
+            "state_province": data.get("state-province") or "",
+            "alpha_two_code": data.get("alpha_two_code", ""),
             "domains": data.get("domains", []),
             "web_pages": data.get("web_pages", []),
         }  # pyright: ignore[reportUnknownVariableType]

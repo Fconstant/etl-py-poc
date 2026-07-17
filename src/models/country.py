@@ -20,14 +20,14 @@ class CountryModel(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        name_obj: dict[str, object] = data.get("name", {}) or {}  # type: ignore[assignment]
-        currencies_obj: dict[str, object] = data.get("currencies", {}) or {}  # type: ignore[assignment]
-        currencies_values = list(currencies_obj.values())  # pyright: ignore[reportUnknownArgumentType]
-        primary: dict[str, object] = currencies_values[0] if currencies_values else {}  # pyright: ignore[reportAssignmentType]
+        names_obj: dict[str, object] = data.get("names", {}) or {}  # type: ignore[assignment]
+        currencies_list: list[dict[str, object]] = data.get("currencies") or []  # type: ignore[assignment]
+        primary: dict[str, object] = currencies_list[0] if currencies_list else {}  # pyright: ignore[reportUnknownVariableType,reportAssignmentType]
+        codes: dict[str, object] = data.get("codes", {}) or {}  # type: ignore[assignment]
 
         return {
-            "name": name_obj.get("common", ""),
-            "iso_code": data.get("cca2", ""),
+            "name": names_obj.get("common", ""),
+            "iso_code": codes.get("alpha_2", ""),
             "continent": (data.get("continents") or [""])[0],
             "population": data.get("population", 0),
             "currency_name": primary.get("name", ""),
