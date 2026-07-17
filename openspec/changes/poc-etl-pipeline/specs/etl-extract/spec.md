@@ -28,7 +28,7 @@ The system SHALL fetch university data from `http://universities.hipolabs.com/se
 
 #### Scenario: Connection refused
 - **WHEN** the API host is unreachable
-- **THEN** the system returns an empty DataFrame and logs a warning (non-fatal, uses cache if available)
+- **THEN** the system logs a warning and raises a `RuntimeError`
 
 ### Requirement: Parse raw JSON into flat typed models
 The system SHALL validate and flatten nested JSON from both APIs using Pydantic `BaseModel` classes defined in `src/models/`.
@@ -44,18 +44,3 @@ The system SHALL validate and flatten nested JSON from both APIs using Pydantic 
 #### Scenario: Invalid JSON rejected
 - **WHEN** a country entry is missing the required `name` field
 - **THEN** Pydantic raises `ValidationError` and the entry is skipped with a warning logged
-
-### Requirement: Cache raw data as Parquet
-The system SHALL persist parsed DataFrames to `data/raw/<source>.parquet` after extraction. Subsequent runs SHALL read from cache if the file exists, skipping the API call.
-
-#### Scenario: Cache hit
-- **WHEN** `data/raw/countries.parquet` already exists
-- **THEN** the system reads it directly with `polars.read_parquet()` without calling the API
-
-#### Scenario: Cache miss
-- **WHEN** no Parquet cache file exists
-- **THEN** the system fetches from the API, parses, and writes the cache file
-
-#### Scenario: CLI clear-cache
-- **WHEN** the user runs `etl clear-cache`
-- **THEN** all files in `data/raw/` are deleted

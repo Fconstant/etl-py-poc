@@ -8,4 +8,26 @@ dependencies = [
     "httpx>=0.28.1",
     "polars>=1.42.1",
     "pydantic>=2.13.4",
+    "typer>=0.27.0",
+]
+
+[tool.pyright]
+include = ["src", "main.py", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
+    "ruff>=0.15.22",
 ]

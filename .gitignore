@@ -8,3 +8,6 @@ env/
 
 # uv
 .uv/
+
+# ruff
+.ruff_cache/

@@ -45,12 +45,8 @@ The system SHALL write all aggregation results to `data/output/<filename>.csv` a
 - **THEN** the system creates the directory before writing
 
 ### Requirement: CLI orchestration via Typer
-The system SHALL expose a Typer CLI with commands `run` (executes full pipeline) and `clear-cache` (removes raw cache files).
+The system SHALL expose a Typer CLI with a `run` command that executes the full pipeline.
 
 #### Scenario: Run pipeline
 - **WHEN** user executes `etl run`
 - **THEN** the full pipeline (extract → transform → aggregate → load) executes and prints a summary to stdout
-
-#### Scenario: Clear cache
-- **WHEN** user executes `etl clear-cache`
-- **THEN** all files in `data/raw/` are deleted and a confirmation message is printed

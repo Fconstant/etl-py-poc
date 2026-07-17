@@ -1,10 +1,7 @@
 ## 1. Project Setup
 
-- [ ] 1.1 Add dependencies to pyproject.toml: polars, pydantic, httpx, typer
-- [ ] 1.2 Run `uv sync` to create lockfile
-- [ ] 1.3 Create directory structure: `src/{extract,transform,load,pipeline,models,utils}`
-- [ ] 1.4 Create `data/raw/` and `data/output/` directories with `.gitkeep`
-- [ ] 1.5 Add `data/` to `.gitignore`
+- [ ] 1.1 Create directory structure: `src/{extract,transform,load,pipeline,models,utils}`
+- [ ] 1.2 Add `data/output/*.csv` and `data/output/*.parquet` to `.gitignore`
 
 ## 2. Utils
 
@@ -18,16 +15,15 @@
 
 ## 4. Extract
 
-- [ ] 4.1 Implement `src/extract/fetcher.py`: `fetch_countries()` with cache-first logic, API call fallback, Pydantic parse, write Parquet cache
-- [ ] 4.2 Implement `src/extract/fetcher.py`: `fetch_universities()` with cache-first logic, API call fallback, Pydantic parse, write Parquet cache
+- [ ] 4.1 Implement `src/extract/fetch_countries.py`: `fetch_countries()` — fetch, Pydantic parse, return Polars DataFrame
+- [ ] 4.2 Implement `src/extract/fetch_universities.py`: `fetch_universities()` — fetch, Pydantic parse, return Polars DataFrame
 
 ## 5. Transform
 
-- [ ] 5.1 Implement `src/transform/aliases.py`: static `dict[str, str]` mapping university country names → REST Countries names
-- [ ] 5.2 Implement `src/transform/normalize.py`: `normalize_countries(df)`, `normalize_universities(df)` with alias resolution
-- [ ] 5.3 Implement `src/transform/join_data.py`: `join_data(universities, countries)` inner join on country name
-- [ ] 5.4 Implement `src/transform/enrich.py`: `enrich(df)` selecting and renaming final columns
-- [ ] 5.5 Implement `src/transform/aggregate.py`: `universities_per_country(df)`, `universities_per_continent(df)`, `top10_countries(df)`
+- [ ] 5.1 Implement `src/transform/normalize.py`: `normalize_countries(df)`, `normalize_universities(df)` with `difflib.get_close_matches()` fuzzy matching (cutoff 0.8)
+- [ ] 5.2 Implement `src/transform/join_data.py`: `join_data(universities, countries)` inner join on country name
+- [ ] 5.3 Implement `src/transform/enrich.py`: `enrich(df)` selecting and renaming final columns
+- [ ] 5.4 Implement `src/transform/aggregate.py`: `universities_per_country(df)`, `universities_per_continent(df)`, `top10_countries(df)`
 
 ## 6. Load
 
@@ -39,7 +35,7 @@
 
 ## 8. CLI
 
-- [ ] 8.1 Implement `main.py`: Typer app with `run` and `clear-cache` commands
+- [ ] 8.1 Implement `main.py`: Typer app with `run` command
 - [ ] 8.2 Add `[project.scripts]` entry point for `etl` in `pyproject.toml`
 
 ## 9. Docs

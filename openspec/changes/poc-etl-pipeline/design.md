@@ -6,9 +6,9 @@ Pipeline ETL didática que integra dados de duas APIs públicas para gerar estat
 
 **Goals:**
 - Pipeline funcional pura: `extract → transform → aggregate → load`
-- Resiliente a falhas de rede (retry, timeout, cache offline)
+- Resiliente a falhas de rede (retry, timeout)
 - Join correto com normalização de aliases de nome de país
-- Persistência de dados crus e resultados em Parquet/CSV
+- Persistência de resultados em Parquet/CSV
 - CLI minimalista para execução do pipeline
 
 **Non-Goals:**
@@ -16,7 +16,7 @@ Pipeline ETL didática que integra dados de duas APIs públicas para gerar estat
 - Processamento incremental ou CDC
 - Interface web ou API REST
 - Containerização ou deploy automatizado
-- Suporte a múltiplos formatos de saída além de CSV e Parquet
+- Suporte a múltiplos formatos de saída além de CSV e Parquet (mas não implementação)
 
 ## Decisions
 
@@ -32,36 +32,31 @@ Pipeline ETL didática que integra dados de duas APIs públicas para gerar estat
 
 **Decisão:** Modelos Pydantic validam e aplainam JSON apenas no momento do extract. Após isso, o pipeline trabalha com Polars DataFrames. Isso evita validação redundante e maximiza performance onde a validação já foi feita.
 
-### 3. Cache offline em Parquet
+### 3. Fuzzy matching para normalização de nomes de países
 
-**Alternativa considerada:** Cache em JSON cru, ou sempre bater na API.
+**Alternativa considerada:** Mapa estático de aliases.
 
-**Decisão:** Após parse e validação Pydantic, salvar DataFrames crus em `data/raw/<source>.parquet`. Se o arquivo existe, pula API. Isso resolve dois problemas: desenvolvimento offline e evitar sobrecarregar APIs públicas com repetição.
+**Decisão:** `difflib.get_close_matches()` da stdlib. Sem dependência extra, resolve variações de nome que não conhecêssemos de antemão (ex: "United States" vs "United States of America"). Mais maduro — é o que libs de mercado usam. Se falso-positivo surgir, adicionar blacklist.
 
-### 4. Mapa de aliases estático para normalização de nomes de países
-
-**Alternativa considerada:** Fuzzy matching com `difflib`/`fuzzywuzzy`.
-
-**Decisão:** Mapa estático em `src/transform/aliases.py` com entradas conhecidas (ex: `"United States" → "United States of America"`). Mais simples, previsível e sem dependências extras. Se novos aliases surgirem, basta adicionar ao dicionário.
-
-### 5. Funções puras e composition root
+### 4. Funções puras e composition root
 
 **Alternativa considerada:** Classes com estado (ETLProcessor, Extractor, etc).
 
 **Decisão:** Cada etapa é uma função pura `(DataFrame) → DataFrame`. A orquestração no `pipeline/run.py` compõe essas funções. Elimina estado compartilhado, facilita testes unitários sem mocking e torna o fluxo de dados explícito.
 
-### 6. Typer CLI com commands separados
+### 5. Typer CLI com comando `run`
 
 **Alternativa considerada:** `if __name__ == "__main__"` direto.
 
-**Decisão:** Typer provê CLI tipada com `run` e `clear-cache`. Sem boilerplate de argparse, ajuda inline automática. O módulo `main.py` serve como entry point.
+**Decisão:** Typer provê CLI tipada com `run`. Sem boilerplate de argparse, ajuda inline automática. O módulo `main.py` serve como entry point.
 
-### 7. Estrutura de diretórios por responsabilidade
+### 6. Estrutura de diretórios por responsabilidade
 
 ```
 src/
 ├── extract/       # fetch_countries(), fetch_universities()
-│   └── fetcher.py
+│   ├── fetch_countries.py
+│   └── fetch_universities.py
 ├── transform/     # normalize(), join_data(), enrich(), aggregate()
 │   ├── normalize.py
 │   ├── join_data.py
@@ -86,7 +81,6 @@ src/
 |------|-----------|
 | Universities API pode mudar schema | Pydantic valida na borda; campos extras são ignorados com `Extra.ignore` |
 | REST Countries pode adicionar/renomear campos | Idem |
-| Alias map não cobre todos os casos | Log de warning com países não matchados permite identificar e adicionar novos aliases |
-| Cache pode ficar stale | CLI `clear-cache` permite reset manual |
+| Fuzzy matching pode gerar falso-positivo | Threshold 0.8 + log de warning nos matches; se ocorrer, adicionar blacklist específica |
 | Polars não é tão difundido quanto Pandas | Projeto é didático; Polars é stack moderna e alvo de aprendizado |
 | httpx async simplificado para sync | Para POC, usar `httpx.Client` síncrono com timeout; async seria over-engineer |

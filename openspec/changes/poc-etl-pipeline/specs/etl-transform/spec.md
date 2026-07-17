@@ -1,18 +1,18 @@
 ## ADDED Requirements
 
-### Requirement: Normalize country names via alias map
-The system SHALL resolve inconsistent country names between the REST Countries API and Universities API using a static alias map defined in `src/transform/aliases.py`.
+### Requirement: Normalize country names via fuzzy matching
+The system SHALL resolve inconsistent country names between the REST Countries API and Universities API using `difflib.get_close_matches()` from the Python standard library, with a cutoff threshold of 0.8.
 
 #### Scenario: Exact match
 - **WHEN** a university's `country` field matches a REST Countries `name` field exactly
-- **THEN** no alias transformation is applied
+- **THEN** no fuzzy matching is needed; the match is direct
 
-#### Scenario: Alias match
+#### Scenario: Fuzzy match
 - **WHEN** a university's `country` is "United States" and the REST Countries name is "United States of America"
-- **THEN** the alias map resolves "United States" → "United States of America" before joining
+- **THEN** `get_close_matches("United States", ["United States of America", ...])` returns "United States of America"
 
 #### Scenario: No match found
-- **WHEN** a university's `country` has no alias and no exact match in the countries dataset
+- **WHEN** a university's `country` has no close match above the cutoff threshold in the countries dataset
 - **THEN** the university is excluded from the join result and a warning is logged with the unmatched country name
 
 ### Requirement: Join universities with countries
