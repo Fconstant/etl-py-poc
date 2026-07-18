@@ -19,7 +19,7 @@ uv sync
 ## Uso
 
 ```sh
-uv run etl start
+uv run etl
 ```
 
 Resultados em `data/output/`:
