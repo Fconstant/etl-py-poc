@@ -31,7 +31,8 @@ Before finishing any task: `uv run ruff check . && uv run ruff format --check . 
 - Pydantic models only at extract boundary (`src/models/`); everything after is Polars.
 - Prefer Polars lazy (`scan_*`, `LazyFrame`) until final `collect()`.
 - Country-name normalization: stdlib `difflib.get_close_matches()` (cutoff 0.8) — no fuzzy-matching deps.
-- CLI: Typer app in `main.py`, command `run`.
+- CLI: Typer app in `src/cli.py`, commands `extract` (fetch APIs + write cache) and `run` (full pipeline, cache-first).
+- Extract cache: `src/extract/cache.py` — Parquet per source in `data/cache/`, TTL 1 day via file mtime; `run` falls back to APIs and updates cache when stale/missing.
 - Layout: `src/{extract,transform,load,pipeline,models,utils}` per design doc.
 
 ## Workflow

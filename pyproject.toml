@@ -20,7 +20,7 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.pyright]
-include = ["src", "main.py", "tests"]
+include = ["src"]
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
 # polars stubs are incomplete — downstream operations on DataFrames are untyped

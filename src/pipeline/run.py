@@ -1,5 +1,4 @@
-from src.extract.fetch_countries import fetch_countries
-from src.extract.fetch_universities import fetch_universities
+from src.extract.cache import get_countries, get_universities
 from src.load.loader import to_csv, to_parquet
 from src.transform.aggregate import (
     top10_countries,
@@ -12,8 +11,8 @@ from src.transform.normalize import normalize_countries, normalize_universities
 
 
 def run() -> None:
-    countries_raw = fetch_countries()
-    universities_raw = fetch_universities()
+    countries_raw = get_countries()
+    universities_raw = get_universities()
 
     countries = normalize_countries(countries_raw)
     country_names = countries["name"].to_list()

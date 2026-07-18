@@ -12,8 +12,8 @@ env/
 # ruff
 .ruff_cache/
 
-# Data output
-data/output/*
+# Data folder
+data/
 
 # env
 .env*
