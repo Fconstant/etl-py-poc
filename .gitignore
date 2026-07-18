@@ -13,7 +13,8 @@ env/
 .ruff_cache/
 
 # Data folder
-data/
+data/*
+!data/country_aliases.json
 
 # env
 .env*

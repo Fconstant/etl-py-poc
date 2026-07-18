@@ -36,6 +36,14 @@ Outputs in `data/output/`:
 - `universities_per_continent.csv` / `.parquet`
 - `top10_universities.csv` / `.parquet`
 
+### Testing
+
+```sh
+uv run pytest            # run all tests
+uv run pytest tests/test_normalize.py   # run a single test file
+uv run pytest -k "test_name"            # run tests matching a pattern
+```
+
 ### Structure
 
 ```
@@ -81,6 +89,14 @@ Resultados em `data/output/`:
 - `universities_per_country.csv` / `.parquet`
 - `universities_per_continent.csv` / `.parquet`
 - `top10_universities.csv` / `.parquet`
+
+### Testes
+
+```sh
+uv run pytest            # roda todos os testes
+uv run pytest tests/test_normalize.py   # roda um arquivo de teste
+uv run pytest -k "test_name"            # roda testes que combinam com o padrão
+```
 
 ### Estrutura
 
