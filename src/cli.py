@@ -6,6 +6,7 @@ from src.extract.fetch_countries import fetch_countries
 from src.extract.fetch_universities import fetch_universities
 from src.pipeline.run import run as run_pipeline
 from src.utils.log import setup_logging
+from src.view.report import generate_report
 
 load_dotenv()
 app = typer.Typer()
@@ -28,6 +29,12 @@ def extract() -> None:
 def run() -> None:
     setup_logging()
     run_pipeline()
+
+
+@app.command()
+def view() -> None:
+    generate_report()
+    print("Report generated: data/output/report.html")
 
 
 if __name__ == "__main__":
