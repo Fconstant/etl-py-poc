@@ -1,3 +1,6 @@
+import pathlib
+import webbrowser
+
 import typer
 from dotenv import load_dotenv
 
@@ -34,7 +37,13 @@ def run() -> None:
 @app.command()
 def view() -> None:
     generate_report()
-    print("Report generated: data/output/report.html")
+    report_path = pathlib.Path("data/output/report.html").resolve()
+    uri = f"file://{report_path}"
+    if webbrowser.open(uri):
+        print(f"Report opened in browser: {report_path}")
+    else:
+        print(f"Report generated: {report_path}")
+        print("(Could not open browser — open the file manually)")
 
 
 if __name__ == "__main__":

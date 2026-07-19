@@ -60,7 +60,7 @@ class TestGenerateReport:
 
 
 class TestCliView:
-    def test_view_command_creates_report(
+    def test_view_command_opens_browser(
         self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         output_dir = tmp_path / "data" / "output"
@@ -68,7 +68,38 @@ class TestCliView:
         for name in CSV_NAMES:
             _cols("x").write_csv(output_dir / f"{name}.csv")
         monkeypatch.chdir(tmp_path)
+
+        calls: list[str] = []
+
+        def fake_open(url: str) -> bool:
+            calls.append(url)
+            return True
+
+        monkeypatch.setattr("src.cli.webbrowser.open", fake_open)
+
         runner = CliRunner()
         result = runner.invoke(app, ["view"])
         assert result.exit_code == 0
         assert (output_dir / "report.html").exists()
+        assert len(calls) == 1
+        assert calls[0] == f"file://{output_dir / 'report.html'}"
+
+    def test_view_command_browser_unavailable(
+        self, tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        output_dir = tmp_path / "data" / "output"
+        output_dir.mkdir(parents=True)
+        for name in CSV_NAMES:
+            _cols("x").write_csv(output_dir / f"{name}.csv")
+        monkeypatch.chdir(tmp_path)
+
+        def fake_open(url: str) -> bool:
+            return False
+
+        monkeypatch.setattr("src.cli.webbrowser.open", fake_open)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["view"])
+        assert result.exit_code == 0
+        assert (output_dir / "report.html").exists()
+        assert "Could not open browser" in result.output
