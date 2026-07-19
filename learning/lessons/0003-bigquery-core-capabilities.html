@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 003: BigQuery Core Capabilities</title>
+<link rel="stylesheet" href="../assets/lesson-style.css">
+</head>
+<body>
+
+<p style="font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-bottom: 2rem;">
+  Lesson 003 of ∞ &nbsp;·&nbsp; <a href="../MISSION.md">Mission</a> &nbsp;·&nbsp; <a href="../RESOURCES.md">Resources</a> &nbsp;·&nbsp; ← <a href="0002-google-sql-basics.html">002</a>
+</p>
+
+<div class="meter">
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment"></div>
+  <div class="meter-segment"></div>
+</div>
+
+<h1>BigQuery Core Capabilities</h1>
+
+<p>You know what BigQuery <em>is</em> (Lesson 001) and how its SQL differs from Postgres (Lesson 002). This lesson covers the platform capabilities you'll discuss in meetings, interviews, and architecture decisions — the things that make you sound like you've been working with BigQuery for months.</p>
+
+<h2>1. Pricing — The #1 Interview Topic</h2>
+
+<p>BigQuery has two pricing models. Understanding when to use each is the single most valuable piece of platform knowledge.</p>
+
+<h3>On-Demand Pricing</h3>
+
+<p>You pay per TiB of data scanned by each query. First <strong>1 TiB/month is free</strong>.</p>
+
+<pre><code>$6.25 per TiB scanned
+Free tier: 1 TiB/month (roughly 65,000 queries on a 1 GB table)</code></pre>
+
+<p>This is what you'll use for most projects. It's simple, predictable at small scale, and requires zero capacity planning.</p>
+
+<div class="callout info">
+  <div class="callout-title">When on-demand makes sense</div>
+  <p>Intermittent workloads, ad-hoc analysis, small-to-medium data, dev/test environments, anything under ~1 TiB of monthly query volume. Your ETL pipeline with ~10K rows? On-demand, no question.</p>
+</div>
+
+<h3>Capacity Pricing (Editions)</h3>
+
+<p>You reserve compute capacity (slots) and pay per slot-hour, regardless of how much data you scan.</p>
+
+<pre><code>Standard Edition: ~$0.04/slot-hour (auto-scales, no commitment)
+Enterprise Edition: ~$0.05/slot-hour (advanced features, SLA)
+Enterprise Plus: ~$0.06/slot-hour (highest performance, compliance)</code></pre>
+
+<div class="callout warning">
+  <div class="callout-title">The break-even rule</div>
+  <p>If you're consistently scanning more than ~1 TiB/month, capacity pricing gets cheaper. Below that, on-demand wins. Most small projects never leave on-demand.</p>
+</div>
+
+<h3>The Safety Valve: max_bytes_billed</h3>
+
+<p>Every query can set a scan limit. If the query would exceed it, it fails instead of running up a bill.</p>
+
+<pre><code>-- Set via Python client or console
+-- Query fails if it would scan more than 1 GB
+max_bytes_billed = 1 * 1024**3  # 1 GB in bytes</code></pre>
+
+<p>This is how you sleep peacefully. Set it on every query in production.</p>
+
+<h2>2. Table Types — Choosing the Right One</h2>
+
+<p>BigQuery has four table types. Each solves a different problem.</p>
+
+<table>
+<tr><th>Type</th><th>What It Is</th><th>When to Use</th></tr>
+<tr><td><strong>Native table</strong></td><td>Data stored in BigQuery's columnar format</td><td>Default choice. Best performance. Your ETL output goes here.</td></tr>
+<tr><td><strong>External table</strong></td><td>References data in GCS, Drive, etc.</td><td>Query data without loading it. Good for parquet/json files you don't want to duplicate.</td></tr>
+<tr><td><strong>View</strong></td><td>SQL query saved as a virtual table</td><td>Reusable queries, access control, hiding complexity. No stored data.</td></tr>
+<tr><td><strong>Materialized view</strong></td><td>Pre-computed results, auto-refreshed</td><td>Dashboards, repeated expensive aggregations. Trades storage for query speed.</td></tr>
+</table>
+
+<h3>Why ADR-002 Chose Native Tables</h3>
+
+<p>Your project loads enriched data + aggregated tables as native tables. The reasoning:</p>
+
+<ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+  <li>Small data (~10K rows) — no benefit from external tables</li>
+  <li>Data is produced by your pipeline, not sitting in GCS</li>
+  <li>Native tables give best query performance</li>
+  <li>Simple setup, no external data source configuration</li>
+</ul>
+
+<h3>When External Tables Shine</h3>
+
+<p>Imagine you have 50 GB of Parquet files in GCS from another team. You want to run a one-off analysis without copying 50 GB into BigQuery. External table — query it directly, pay only for the scan, leave the data where it is.</p>
+
+<h2>3. Partitioning & Clustering — Splitting Data for Speed</h2>
+
+<p>These two features solve the same problem differently: reducing how much data each query scans.</p>
+
+<h3>Partitioning</h3>
+
+<p>Split a table into segments (partitions) based on a column value. Queries that filter on the partition column only scan the relevant partitions.</p>
+
+<pre><code>-- Partition by date (most common)
+CREATE TABLE events (
+  event_id STRING,
+  event_time TIMESTAMP,
+  user_id STRING
+)
+PARTITION BY DATE(event_time);
+
+-- Now this query only scans one day, not the whole table
+SELECT COUNT(*) FROM events
+WHERE event_time >= '2026-07-01' AND event_time < '2026-07-02';</code></pre>
+
+<p>Partition types:</p>
+<ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+  <li><strong>Time-unit</strong> — daily (default), hourly, monthly</li>
+  <li><strong>Integer-range</strong> — based on an integer column</li>
+  <li><strong>Ingestion-time</strong> — partitioned by when data was loaded</li>
+</ul>
+
+<h3>Clustering</h3>
+
+<p>Sort data within each partition by up to 4 columns. Queries that filter/sort on clustered columns skip irrelevant blocks.</p>
+
+<pre><code>-- Cluster by country within each date partition
+CREATE TABLE events (
+  event_id STRING,
+  event_time TIMESTAMP,
+  country STRING,
+  user_id STRING
+)
+PARTITION BY DATE(event_time)
+CLUSTER BY country;</code></pre>
+
+<h3>Partition vs Cluster — When to Use Which</h3>
+
+<table>
+<tr><th>Scenario</th><th>Use</th><th>Why</th></tr>
+<tr><td>Time-series data, queries filter by date</td><td>Partition</td><td>Eliminates entire time ranges from scan</td></tr>
+<tr><td>Large table, queries filter by a few categorical columns</td><td>Cluster</td><td>Sorts data within partitions for faster filtering</td></tr>
+<tr><td>Both</td><td>Partition + Cluster</td><td>Partition first (coarse), cluster second (fine)</td></tr>
+<tr><td>Small table (&lt;1 GB)</td><td>Neither</td><td>Full scan is fast enough; overhead not worth it</td></tr>
+</table>
+
+<div class="callout info">
+  <div class="callout-title">Why your project skips both</div>
+  <p>ADR-002 explicitly decided against partitioning and clustering. Your data is ~10K rows — a full scan takes milliseconds and costs fractions of a penny. Knowing when <em>not</em> to optimize is as valuable as knowing how to optimize.</p>
+</div>
+
+<h2>4. Materialized Views — Pre-Computed Results</h2>
+
+<p>A materialized view stores the result of a query on disk. BigQuery keeps it fresh automatically.</p>
+
+<pre><code>-- Create a materialized view for a dashboard
+CREATE MATERIALIZED VIEW `etl_universities.universities_per_country`
+AS
+SELECT country, COUNT(*) as university_count
+FROM `etl_universities.universities`
+GROUP BY country;</code></pre>
+
+<p>When someone queries the materialized view, BigQuery reads the pre-computed result instead of scanning the source table. Queries are faster, and BigQuery only charges for the small amount of data read from the materialized view.</p>
+
+<h3>Materialized View vs Native Table for Aggregations</h3>
+
+<table>
+<tr><th>Aspect</th><th>Materialized View</th><th>Native Table (your approach)</th></tr>
+<tr><td>Refresh</td><td>Automatic (BigQuery manages it)</td><td>Manual (your pipeline rewrites it)</td></tr>
+<tr><td>Cost</td><td>Storage + refresh compute</td><td>Load cost + query cost</td></tr>
+<tr><td>Flexibility</td><td>Limited (no JOINs across datasets, no UDFs)</td><td>Full SQL, full control</td></tr>
+<tr><td>Consistency</td><td>Eventually consistent (refresh lag)</td><td>Consistent after pipeline run</td></tr>
+</table>
+
+<div class="callout info">
+  <div class="callout-title">Why your project chose native tables</div>
+  <p>Your aggregations are simple and your data is small. Native tables give you full control, no refresh lag, and no materialized view limitations. The tradeoff is that your pipeline re-computes aggregations on each run — but with ~10K rows, that's negligible.</p>
+</div>
+
+<h2>5. Federated Queries — Query Without Loading</h2>
+
+<p>Federated queries let you query data that lives outside BigQuery — GCS files, Drive spreadsheets, even Cloud SQL databases — using standard SQL.</p>
+
+<pre><code>-- Query a Parquet file in GCS without loading it
+SELECT * FROM EXTERNAL_QUERY(
+  'connection-id',
+  'SELECT * FROM `/bucket/data/file.parquet`'
+);
+
+-- Or query Google Sheets directly
+SELECT * FROM EXTERNAL_QUERY(
+  'connection-id',
+  'SELECT * FROM `spreadsheet-id`.Sheet1'
+);</code></pre>
+
+<p>This is powerful for one-off analysis, data exploration, or when you need to join BigQuery data with external sources. You pay for the data scanned, same as a regular query.</p>
+
+<h2>6. GCP Ecosystem Integration</h2>
+
+<p>BigQuery doesn't exist in isolation. Knowing how it connects to other GCP services makes you sound like you understand the platform holistically.</p>
+
+<table>
+<tr><th>Service</th><th>Connection to BigQuery</th><th>When It Matters</th></tr>
+<tr><td><strong>Cloud Storage</strong></td><td>External tables, load/export targets</td><td>Data lake patterns, staging files, cross-team data sharing</td></tr>
+<tr><td><strong>Pub/Sub</strong></td><td>Streaming ingestion trigger</td><td>Real-time pipelines (not your use case, but good to know)</td></tr>
+<tr><td><strong>Dataflow</strong></td><td>ETL between BigQuery and other systems</td><td>Complex transformations at scale (you use Polars instead — simpler)</td></tr>
+<tr><td><strong>Looker</strong></td><td>BI layer on top of BigQuery</td><td>Enterprise dashboards and reporting</td></tr>
+<tr><td><strong>Connected Sheets</strong></td><td>Google Sheets add-on for BigQuery</td><td>Analysts can query BigQuery from a spreadsheet — powerful for non-technical users</td></tr>
+<tr><td><strong>Cloud Run</strong></td><td>Deploy scripts that use BigQuery</td><td>Your Phase 3: scheduled pipeline runs</td></tr>
+</table>
+
+<h2>7. Security Basics</h2>
+
+<p>BigQuery's security model layers on top of GCP's IAM (Identity and Access Management).</p>
+
+<h3>IAM Roles</h3>
+
+<table>
+<tr><th>Role</th><th>What It Grants</th><th>When to Use</th></tr>
+<tr><td><code>roles/bigquery.dataViewer</code></td><td>Read data</td><td>Analysts, dashboards</td></tr>
+<tr><td><code>roles/bigquery.dataEditor</code></td><td>Read + write data</td><td>ETL pipelines, data loaders</td></tr>
+<tr><td><code>roles/bigquery.dataOwner</code></td><td>Full data control</td><td>Dataset administrators</td></tr>
+<tr><td><code>roles/bigquery.jobUser</code></td><td>Run queries</td><td>Anyone who writes SQL (can combine with dataViewer)</td></tr>
+</table>
+
+<p>Your ETL pipeline needs: <code>dataEditor</code> (to load tables) + <code>jobUser</code> (to run queries if needed).</p>
+
+<h3>Column-Level Security</h3>
+
+<p>Hide sensitive columns from certain users without hiding the entire table.</p>
+
+<pre><code>-- Create a policy tag
+-- Apply it to a column: only users with the Fine-Grained Reader role can see it</code></pre>
+
+<p>Use case: a table has both public data (country names) and sensitive data (user emails). Column-level security lets you expose the table to everyone while hiding the email column.</p>
+
+<h3>Row-Level Security</h3>
+
+<p>Show different rows to different users based on filter conditions.</p>
+
+<pre><code>-- A regional manager only sees data for their region
+-- Row-level security policy applies the filter automatically</code></pre>
+
+<p>Use case: multi-tenant dashboards where each client should only see their own data.</p>
+
+<h2>Checkpoint Quiz</h2>
+
+<div class="quiz">
+  <div class="quiz-question">1. When does capacity pricing (Editions) become cheaper than on-demand?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Always — it's the recommended model</li>
+    <li onclick="checkAnswer(this, true)">B) When you consistently scan more than ~1 TiB/month</li>
+    <li onclick="checkAnswer(this, false)">C) Only for enterprise customers</li>
+    <li onclick="checkAnswer(this, false)">D) When you have more than 100 tables</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">2. You have 50 GB of Parquet files in GCS and want to run a one-off query. What's the best approach?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Load everything into a native table first</li>
+    <li onclick="checkAnswer(this, true)">B) Create an external table and query it directly</li>
+    <li onclick="checkAnswer(this, false)">C) Download the files and query locally</li>
+    <li onclick="checkAnswer(this, false)">D) Use a materialized view</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">3. You have a table with 10K rows. Should you partition it?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Yes — always partition for performance</li>
+    <li onclick="checkAnswer(this, false)">B) Yes — partition by ingestion time</li>
+    <li onclick="checkAnswer(this, true)">C) No — full scan is fast enough at this scale</li>
+    <li onclick="checkAnswer(this, false)">D) Only if you have more than 5 queries per day</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">4. What's the key difference between a materialized view and a native table for aggregations?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Materialized views are faster</li>
+    <li onclick="checkAnswer(this, true)">B) Materialized views refresh automatically; native tables require your pipeline to recompute</li>
+    <li onclick="checkAnswer(this, false)">C) Native tables can't store aggregations</li>
+    <li onclick="checkAnswer(this, false)">D) Materialized views support full SQL</li>
+  </ul>
+</div>
+
+<h2>Primary Source</h2>
+
+<p>Read: <a href="https://cloud.google.com/bigquery/pricing">BigQuery Pricing — Google Cloud</a> (focus on "On-demand pricing" and "Editions pricing" sections). Then: <a href="https://docs.cloud.google.com/bigquery/docs/partitioned-tables">Introduction to Partitioned Tables</a> for the partitioning deep-dive.</p>
+
+<div class="callout success">
+  <div class="callout-title">You Did It</div>
+  <p>You now understand the seven core capabilities that define BigQuery as a platform: pricing models, table types, partitioning, materialized views, federated queries, ecosystem integration, and security. This is the vocabulary of someone who works with BigQuery — not just someone who's read about it.</p>
+</div>
+
+<div class="footer">
+  <p>📌 Ask me anything about this lesson. Want to dive deeper into pricing scenarios? Want to see how your ADR decisions map to these capabilities? Just ask.</p>
+  <p style="margin-top: 0.5rem;">Next: <a href="0004-python-client-bigquery.html">Lesson 004 — Python Client & Loading Data</a></p>
+</div>
+
+<script>
+function checkAnswer(el, correct) {
+  const quiz = el.closest('.quiz');
+  if (quiz.dataset.answered) return;
+  quiz.dataset.answered = 'true';
+  el.classList.add(correct ? 'correct' : 'wrong');
+  if (!correct) {
+    quiz.querySelectorAll('li').forEach(li => {
+      if (li !== el) li.classList.add('correct');
+    });
+  }
+}
+</script>
+
+</body>
+</html>
