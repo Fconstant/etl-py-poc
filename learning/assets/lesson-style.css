@@ -1,0 +1,130 @@
+/* Shared lesson stylesheet — Tufte-inspired */
+:root {
+  --serif: "Georgia", "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "SF Mono", "Fira Code", "Consolas", monospace;
+  --bg: #fafaf8;
+  --fg: #1a1a1a;
+  --accent: #2563eb;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --code-bg: #f3f4f6;
+  --success: #059669;
+  --warning: #d97706;
+  --sidebar: #f9fafb;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--fg);
+  background: var(--bg);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 6rem;
+}
+
+h1 { font-size: 2.2rem; margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+h2 { font-size: 1.5rem; margin-top: 2.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+h3 { font-size: 1.15rem; margin-top: 1.8rem; margin-bottom: 0.5rem; }
+
+p { margin-bottom: 1rem; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--code-bg);
+  border-left: 3px solid var(--accent);
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  margin: 1rem 0 1.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+
+blockquote {
+  border-left: 3px solid var(--muted);
+  padding-left: 1rem;
+  color: var(--muted);
+  font-style: italic;
+  margin: 1.5rem 0;
+}
+
+.callout {
+  background: var(--sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+  margin: 1.5rem 0;
+}
+.callout.warning { border-left: 4px solid var(--warning); }
+.callout.success { border-left: 4px solid var(--success); }
+.callout.info { border-left: 4px solid var(--accent); }
+.callout-title { font-weight: 700; font-family: var(--sans); margin-bottom: 0.3rem; }
+
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; font-size: 0.95rem; }
+th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); }
+th { font-family: var(--sans); font-weight: 600; background: var(--sidebar); }
+
+.quiz {
+  background: var(--sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.2rem;
+  margin: 1.5rem 0;
+}
+.quiz-question { font-family: var(--sans); font-weight: 600; margin-bottom: 0.8rem; }
+.quiz-options { list-style: none; }
+.quiz-options li {
+  padding: 0.5rem 0.8rem;
+  margin: 0.3rem 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  transition: background 0.15s;
+}
+.quiz-options li:hover { background: #e8e8e8; }
+.quiz-options li.correct { background: #d1fae5; border-color: var(--success); }
+.quiz-options li.wrong { background: #fee2e2; border-color: #dc2626; }
+
+.footer {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-family: var(--sans);
+}
+
+.meter {
+  display: flex;
+  gap: 4px;
+  margin: 1rem 0;
+}
+.meter-segment {
+  height: 6px;
+  flex: 1;
+  background: var(--border);
+  border-radius: 3px;
+}
+.meter-segment.filled { background: var(--accent); }
+
+@media print {
+  body { max-width: 100%; font-size: 12pt; }
+  .quiz-options li { cursor: default; }
+}

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BigQuery Glossary</title>
+<link rel="stylesheet" href="../assets/lesson-style.css">
+</head>
+<body>
+
+<h1>BigQuery Glossary</h1>
+<p>Quick reference for BigQuery terminology. Updated as lessons progress.</p>
+
+<h2>Architecture</h2>
+
+<table>
+<tr><th>Term</th><th>Definition</th></tr>
+<tr><td><strong>OLAP</strong></td><td>Online Analytical Processing. Queries scan millions/billions of rows to produce aggregations. BigQuery's workload.</td></tr>
+<tr><td><strong>OLTP</strong></td><td>Online Transactional Processing. Fast reads/writes of individual records. Postgres's workload.</td></tr>
+<tr><td><strong>Columnar storage</strong></td><td>Data stored column-by-column instead of row-by-row. Optimized for analytical queries that touch few columns across many rows.</td></tr>
+<tr><td><strong>Capacitor</strong></td><td>BigQuery's internal columnar storage format. Compressed, optimized for analytical scans.</td></tr>
+<tr><td><strong>Dremel</strong></td><td>BigQuery's query execution engine. Turns SQL into a tree of parallel workers (slots).</td></tr>
+<tr><td><strong>Colossus</strong></td><td>Google's distributed storage system. Handles BigQuery's data storage, replication, recovery.</td></tr>
+<tr><td><strong>Slot</strong></td><td>A virtual CPU used by BigQuery's compute layer. More slots = faster queries.</td></tr>
+</table>
+
+<h2>Data Model</h2>
+
+<table>
+<tr><th>Term</th><th>Postgres Equivalent</th><th>Definition</th></tr>
+<tr><td><strong>Project</strong></td><td>Database server</td><td>Top-level GCP container. All BigQuery resources live under a project.</td></tr>
+<tr><td><strong>Dataset</strong></td><td>Schema</td><td>Logical container for tables. Controls access, location, and defaults.</td></tr>
+<tr><td><strong>Table</strong></td><td>Table</td><td>Structured data in rows and columns. Has a schema.</td></tr>
+<tr><td><strong>View</strong></td><td>View</td><td>Virtual table defined by a SQL query. No stored data.</td></tr>
+<tr><td><strong>Materialized view</strong></td><td>Materalized view (rare)</td><td>Pre-computed results stored on disk. Periodically refreshed.</td></tr>
+<tr><td><strong>External table</strong></td><td>Foreign data wrapper</td><td>References data outside BigQuery (GCS, Drive, etc.).</td></tr>
+</table>
+
+<h2>Pricing</h2>
+
+<table>
+<tr><th>Term</th><th>Definition</th></tr>
+<tr><td><strong>On-demand pricing</strong></td><td>Pay per TiB of data scanned. First 1 TiB/month free. $6.25/TiB after that.</td></tr>
+<tr><td><strong>Capacity pricing (Editions)</strong></td><td>Pay per slot-hour. You reserve compute capacity. Cheaper at steady high usage.</td></tr>
+<tr><td><strong>Write disposition</strong></td><td>What happens when loading data: WRITE_TRUNCATE (overwrite), WRITE_APPEND (add), WRITE_EMPTY (fail if exists).</td></tr>
+<tr><td><strong>Max bytes billed</strong></td><td>Per-query safety valve. Query fails if estimated scan exceeds this limit.</td></tr>
+</table>
+
+<h2>SQL</h2>
+
+<table>
+<tr><th>Term</th><th>Postgres Equivalent</th><th>Definition</th></tr>
+<tr><td><strong>GoogleSQL</strong></td><td>ANSI SQL (mostly)</td><td>BigQuery's recommended SQL dialect. ANSI-compliant. Use this, not legacy SQL.</td></tr>
+<tr><td><strong>Legacy SQL</strong></td><td>—</td><td>Older BigQuery SQL dialect. Deprecated. Avoid.</td></tr>
+<tr><td><strong>DML</strong></td><td>Same</td><td>Data Manipulation Language: INSERT, UPDATE, DELETE, MERGE. Supported but not BigQuery's strength.</td></tr>
+<tr><td><strong>DDL</strong></td><td>Same</td><td>Data Definition Language: CREATE TABLE, DROP TABLE, ALTER TABLE.</td></tr>
+<tr><td><strong>QUALIFY</strong></td><td>Subquery wrapper</td><td>Filters window function results inline. No Postgres equivalent — simplifies ROW_NUMBER/RANK filtering.</td></tr>
+<tr><td><strong>SELECT * EXCEPT</strong></td><td>Column list</td><td>Select all columns except named ones. Useful after window functions that add temporary columns.</td></tr>
+<tr><td><strong>UNNEST</strong></td><td><code>unnest()</code></td><td>Expands an ARRAY into rows. Used with cross joins: <code>FROM t, UNNEST(arr) AS elem</code>.</td></tr>
+<tr><td><strong>SAFE_DIVIDE</strong></td><td><code>NULLIF(x,0)</code> trick</td><td>Returns NULL on division by zero instead of failing. Use proactively.</td></tr>
+<tr><td><strong>SAFE_CAST</strong></td><td><code>TRY_CAST</code></td><td>Returns NULL on cast failure instead of failing.</td></tr>
+<tr><td><strong>CTE (WITH)</strong></td><td>Same syntax</td><td>Common Table Expression. In BigQuery, inlined (re-scanned per reference), not materialized.</td></tr>
+</table>
+
+<h2>Key Syntax Differences (Postgres → GoogleSQL)</h2>
+
+<table>
+<tr><th>Pattern</th><th>Postgres</th><th>BigQuery</th></tr>
+<tr><td>Escape identifiers</td><td><code>"column"</code></td><td><code>`column`</code></td></tr>
+<tr><td>Current timestamp</td><td><code>NOW()</code></td><td><code>CURRENT_TIMESTAMP()</code></td></tr>
+<tr><td>Cast</td><td><code>col::INT</code></td><td><code>CAST(col AS INT64)</code></td></tr>
+<tr><td>Integer division</td><td><code>7 / 2 = 3</code></td><td><code>7 / 2 = 3.5</code>, use <code>DIV(7,2)</code></td></tr>
+<tr><td>Case-insensitive LIKE</td><td><code>ILIKE</code></td><td><code>LOWER(col) LIKE LOWER('...')</code></td></tr>
+<tr><td>Auto-increment</td><td><code>SERIAL</code></td><td><code>GENERATE_UUID()</code> or <code>ROW_NUMBER()</code></td></tr>
+</table>
+
+<div class="footer">
+  <p>Lesson links: <a href="../lessons/0001-what-is-bigquery.html">001: What Is BigQuery?</a> · <a href="../lessons/0002-google-sql-basics.html">002: GoogleSQL Basics</a></p>
+</div>
+
+</body>
+</html>
