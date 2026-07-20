@@ -48,6 +48,19 @@
 <tr><td><strong>ADC</strong></td><td>Application Default Credentials. Standard way for Google Cloud client libraries to find credentials (env var, metadata server, etc.).</td></tr>
 </table>
 
+<h2>Performance & Optimization</h2>
+
+<table>
+<tr><th>Term</th><th>Definition</th></tr>
+<tr><td><strong>Dry run</strong></td><td>Query simulation that estimates bytes scanned without executing. Zero-cost way to check a query won't blow your budget.</td></tr>
+<tr><td><strong>Query cache</strong></td><td>BigQuery caches results for 24 hours. Identical queries return cached results free — no bytes scanned.</td></tr>
+<tr><td><strong>Slot</strong></td><td>Virtual CPU in BigQuery's compute layer. On-demand uses shared pool; Editions reserve dedicated slots.</td></tr>
+<tr><td><strong>Slot utilization</strong></td><td>Ratio of slots used vs available. Low utilization for a large table → query is slot-starved.</td></tr>
+<tr><td><strong>Execution plan</strong></td><td>Tree of stages BigQuery converts SQL into. Each stage runs in parallel across workers.</td></tr>
+<tr><td><strong>INFORMATION_SCHEMA</strong></td><td>System tables with metadata about projects, datasets, tables, and job history. Query it like regular tables.</td></tr>
+<tr><td><strong>Approximate aggregation</strong></td><td>Functions like <code>approx_count_distinct</code> that return close-enough results much faster.</td></tr>
+</table>
+
 <h2>Python Client</h2>
 
 <table>
@@ -110,7 +123,7 @@
 </table>
 
 <div class="footer">
-  <p>Lesson links: <a href="../lessons/0001-what-is-bigquery.html">001: What Is BigQuery?</a> · <a href="../lessons/0002-google-sql-basics.html">002: GoogleSQL Basics</a> · <a href="../lessons/0003-bigquery-core-capabilities.html">003: Core Capabilities</a> · <a href="../lessons/0004-python-client-bigquery.html">004: Python Client</a></p>
+  <p>Lesson links: <a href="../lessons/0001-what-is-bigquery.html">001: What Is BigQuery?</a> · <a href="../lessons/0002-google-sql-basics.html">002: GoogleSQL Basics</a> · <a href="../lessons/0003-bigquery-core-capabilities.html">003: Core Capabilities</a> · <a href="../lessons/0004-python-client-bigquery.html">004: Python Client</a> · <a href="../lessons/0005-query-optimization-performance.html">005: Optimization</a></p>
 </div>
 
 </body>

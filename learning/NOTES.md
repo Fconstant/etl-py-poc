@@ -12,4 +12,5 @@
 - 2026-07-19: Created Lesson 002 (GoogleSQL Basics). User feedback: not interested in GoogleSQL syntax deep-dives, wants platform capabilities that make them sound like an expert. Adjusted lesson plan.
 - 2026-07-19: Created Lesson 003 (BigQuery Core Capabilities) — pricing, table types, partitioning, materialized views, federated queries, ecosystem, security. Trimmed to 7 focused sections per user request.
 - 2026-07-19: Created Lesson 004 (Python Client & Loading Data) — ADC auth, Polars→Arrow→BigQuery flow, write dispositions, schema mapping, to_bigquery() function, error handling. Ties directly to ADR-001/002.
+- 2026-07-19: Created Lesson 005 (Query Optimization & Performance) — dry runs, cache, slots, execution details, INFORMATION_SCHEMA, temp tables vs CTEs, approximate aggregations, optimization workflow.
 - 2026-07-19: Moved all learning files into `learning/` subfolder. Updated skill instructions.
