@@ -25,6 +25,8 @@ def run(export_bigquery: bool = False) -> None:
     by_continent = universities_per_continent(enriched)
     top10 = top10_countries(enriched)
 
+    bq_success: list[str] = []
+    bq_failed: list[str] = []
     for df, name in [
         (enriched, "universities"),
         (by_country, "universities_per_country"),
@@ -34,9 +36,14 @@ def run(export_bigquery: bool = False) -> None:
         to_csv(df, name)
         to_parquet(df, name)
         if export_bigquery:
-            to_bigquery(df, name)
+            if to_bigquery(df, name):
+                bq_success.append(name)
+            else:
+                bq_failed.append(name)
 
     print(
         f"Pipeline complete: {len(countries_raw)} countries, "
         f"{len(universities_raw)} universities processed."
     )
+    if export_bigquery:
+        print(f"BigQuery: {len(bq_success)} tables loaded, {len(bq_failed)} failed")
