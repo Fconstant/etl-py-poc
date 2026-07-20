@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 004: Python Client & Loading Data</title>
+<link rel="stylesheet" href="../assets/lesson-style.css">
+</head>
+<body>
+
+<p style="font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-bottom: 2rem;">
+  Lesson 004 of ∞ &nbsp;·&nbsp; <a href="../MISSION.md">Mission</a> &nbsp;·&nbsp; <a href="../RESOURCES.md">Resources</a> &nbsp;·&nbsp; ← <a href="0003-bigquery-core-capabilities.html">003</a>
+</p>
+
+<div class="meter">
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment"></div>
+</div>
+
+<h1>Python Client & Loading Data</h1>
+
+<p>You understand the platform. Now the mechanical part: getting data from Polars into BigQuery. This lesson is concrete — code you'll copy into your project.</p>
+
+<h2>The Flow</h2>
+
+<pre><code>Polars DataFrame
+  → PyArrow Table  (in-memory, columnar)
+    → BigQuery API  (upload + load job)
+      → BigQuery Table  (stored in Colossus)</code></pre>
+
+<p>PyArrow is the bridge. Polars speaks Arrow natively; BigQuery's Python client accepts Arrow tables. No CSVs, no JSON, no serialization overhead.</p>
+
+<h2>1. Authentication</h2>
+
+<p>BigQuery requires a GCP identity. For a service like your ETL pipeline (no human logging in), you use a <strong>service account</strong>.</p>
+
+<h3>What You Need</h3>
+
+<ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+  <li>A GCP project with BigQuery API enabled</li>
+  <li>A service account with <code>roles/bigquery.dataEditor</code> + <code>roles/bigquery.jobUser</code></li>
+  <li>A JSON key file for that service account</li>
+</ol>
+
+<h3>Application Default Credentials (ADC)</h3>
+
+<p>The Google Cloud client library uses ADC to find credentials automatically. The simplest way:</p>
+
+<pre><code># Set this environment variable before running your pipeline
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"</code></pre>
+
+<p>The BigQuery client picks it up automatically — no code needed for auth.</p>
+
+<div class="callout warning">
+  <div class="callout-title">Never commit the key file</div>
+  <p>Add the JSON key to <code>.gitignore</code> immediately. If it leaks, anyone can use your BigQuery resources on your bill.</p>
+</div>
+
+<h3>Creating the Client</h3>
+
+<pre><code>from google.cloud import bigquery
+
+client = bigquery.Client(
+    project="your-gcp-project-id",
+    # credentials auto-discovered from ADC
+)</code></pre>
+
+<p>One client, reusable across all operations. Create it once at the top of your load function.</p>
+
+<h2>2. Polars → Arrow → BigQuery</h2>
+
+<p>This is the core pattern. Three lines of code:</p>
+
+<pre><code>import polars as pl
+from google.cloud import bigquery
+
+# Your Polars DataFrame
+df: pl.DataFrame = ...  # from transform stage
+
+# Step 1: Convert to Arrow (zero-copy — Polars is built on Arrow)
+arrow_table = df.to_arrow()
+
+# Step 2: Load into BigQuery
+job = client.load_table_from_object(
+    arrow_table,
+    destination="your-project.etl_universities.universities",
+    job_config=bigquery.LoadJobConfig(
+        write_disposition="WRITE_TRUNCATE",
+    ),
+)
+
+# Step 3: Wait for the job to finish
+job.result()  # blocks until load completes</code></pre>
+
+<p><code>to_arrow()</code> is zero-copy because Polars is built on Apache Arrow internally. No data is serialized — the Arrow format is shared between Polars and the BigQuery client.</p>
+
+<h2>3. Write Dispositions</h2>
+
+<p>What happens when the target table already exists?</p>
+
+<table>
+<tr><th>Disposition</th><th>Behavior</th><th>When to Use</th></tr>
+<tr><td><code>WRITE_TRUNCATE</code></td><td>Overwrite the table entirely</td><td>Batch pipelines that re-run from scratch (your case — ADR-002)</td></tr>
+<tr><td><code>WRITE_APPEND</code></td><td>Add rows to the existing table</td><td>Incremental loads, streaming</td></tr>
+<tr><td><code>WRITE_EMPTY</code></td><td>Fail if table already has data</td><td>Safety check for one-time loads</td></tr>
+</table>
+
+<p>Your pipeline uses <code>WRITE_TRUNCATE</code> because each run produces a complete snapshot of the data. Old results are replaced, not appended.</p>
+
+<h2>4. Schema Mapping</h2>
+
+<p>BigQuery needs to know your column types. When loading from Arrow, it infers them automatically — but you can override.</p>
+
+<pre><code>job_config = bigquery.LoadJobConfig(
+    write_disposition="WRITE_TRUNCATE",
+    autodetect=False,  # don't guess — be explicit
+    schema=[
+        bigquery.SchemaField("university_name", "STRING"),
+        bigquery.SchemaField("country", "STRING"),
+        bigquery.SchemaField("iso_code", "STRING"),
+        bigquery.SchemaField("continent", "STRING"),
+        bigquery.SchemaField("population", "INT64"),
+        bigquery.SchemaField("currency_name", "STRING"),
+    ],
+)</code></pre>
+
+<h3>Polars → BigQuery Type Mapping</h3>
+
+<table>
+<tr><th>Polars Type</th><th>Arrow Type</th><th>BigQuery Type</th></tr>
+<tr><td><code>Utf8</code> / <code>String</code></td><td><code>string</code></td><td><code>STRING</code></td></tr>
+<tr><td><code>Int8</code> / <code>Int16</code> / <code>Int32</code> / <code>Int64</code></td><td><code>int8</code>–<code>int64</code></td><td><code>INT64</code></td></tr>
+<tr><td><code>Float32</code> / <code>Float64</code></td><td><code>float</code> / <code>double</code></td><td><code>FLOAT64</code></td></tr>
+<tr><td><code>Boolean</code></td><td><code>bool</code></td><td><code>BOOL</code></td></tr>
+<tr><td><code>Date</code></td><td><code>date32</code></td><td><code>DATE</code></td></tr>
+<tr><td><code>Datetime</code></td><td><code>timestamp</code></td><td><code>TIMESTAMP</code></td></tr>
+<tr><td><code>Categorical</code></td><td><code>dictionary</code></td><td><code>STRING</code></td></tr>
+</table>
+
+<div class="callout info">
+  <div class="callout-title">Autodetect vs explicit schema</div>
+  <p>For your project, autodetect works fine — your schema is simple. In production, explicit schema prevents surprises: a column that was <code>INT</code> silently becoming <code>STRING</code> because of a null value in the source.</p>
+</div>
+
+<h2>5. Your to_bigquery() Function</h2>
+
+<p>Tying it all together — the function that goes into your load layer:</p>
+
+<pre><code>from google.cloud import bigquery
+import polars as pl
+
+
+def to_bigquery(
+    dfs: dict[str, pl.DataFrame],
+    project_id: str,
+    dataset: str,
+) -> None:
+    """Load multiple DataFrames into BigQuery tables.
+
+    Args:
+        dfs: Mapping of table_name → DataFrame
+        project_id: GCP project ID
+        dataset: BigQuery dataset name
+    """
+    client = bigquery.Client(project=project_id)
+
+    for table_name, df in dfs.items():
+        table_id = f"{project_id}.{dataset}.{table_name}"
+        arrow_table = df.to_arrow()
+
+        job = client.load_table_from_object(
+            arrow_table,
+            destination=table_id,
+            job_config=bigquery.LoadJobConfig(
+                write_disposition="WRITE_TRUNCATE",
+            ),
+        )
+        job.result()  # wait for completion
+
+        print(
+            f"Loaded {df.shape[0]} rows into {table_id}"
+        )</code></pre>
+
+<p>Usage from your pipeline:</p>
+
+<pre><code>to_bigquery(
+    dfs={
+        "universities": enriched_df,
+        "universities_per_country": per_country_df,
+        "universities_per_continent": per_continent_df,
+        "top10_universities": top10_df,
+    },
+    project_id="your-gcp-project",
+    dataset="etl_universities",
+)</code></pre>
+
+<h2>6. Reading Data Back</h2>
+
+<p>To query BigQuery from Python (for verification or further analysis):</p>
+
+<pre><code># Run a query
+results = client.query("SELECT COUNT(*) as cnt FROM etl_universities.universities").to_dataframe()
+
+# results is a Pandas DataFrame — convert to Polars if needed
+pl_df = pl.from_pandas(results)</code></pre>
+
+<h2>7. Error Handling</h2>
+
+<p>Common failures and how to handle them:</p>
+
+<pre><code>from google.api_core.exceptions import GoogleAPIError
+
+try:
+    job.result()
+except GoogleAPIError as e:
+    print(f"Load failed: {e}")
+    # Job details for debugging
+    print(f"Job ID: {job.job_id}")
+    print(f"Errors: {job.errors}")</code></pre>
+
+<div class="callout warning">
+  <div class="callout-title">Job.result() blocks forever</div>
+  <p>If the load job hangs (network issue, quota exceeded), <code>job.result()</code> blocks indefinitely. Set a timeout: <code>job.result(timeout=300)</code> (5 minutes). For small datasets, loads complete in seconds.</p>
+</div>
+
+<h2>Checkpoint Quiz</h2>
+
+<div class="quiz">
+  <div class="quiz-question">1. What format does Polars use to bridge to BigQuery?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) CSV</li>
+    <li onclick="checkAnswer(this, false)">B) JSON</li>
+    <li onclick="checkAnswer(this, true)">C) Apache Arrow</li>
+    <li onclick="checkAnswer(this, false)">D) Parquet</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">2. Which write disposition overwrites the table on each run?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) WRITE_APPEND</li>
+    <li onclick="checkAnswer(this, true)">B) WRITE_TRUNCATE</li>
+    <li onclick="checkAnswer(this, false)">C) WRITE_EMPTY</li>
+    <li onclick="checkAnswer(this, false)">D) WRITE_REPLACE</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">3. How does the BigQuery client find credentials by default?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) You pass them in the constructor</li>
+    <li onclick="checkAnswer(this, true)">B) ADC reads the GOOGLE_APPLICATION_CREDENTIALS env var</li>
+    <li onclick="checkAnswer(this, false)">C) It uses your Google account login</li>
+    <li onclick="checkAnswer(this, false)">D) It downloads them from GCP automatically</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">4. Why is <code>to_arrow()</code> fast in Polars?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) It compresses the data first</li>
+    <li onclick="checkAnswer(this, true)">B) It's zero-copy — Polars is built on Arrow internally</li>
+    <li onclick="checkAnswer(this, false)">C) It uses a background thread</li>
+    <li onclick="checkAnswer(this, false)">D) It only converts the first 1000 rows</li>
+  </ul>
+</div>
+
+<h2>Primary Source</h2>
+
+<p>Read: <a href="https://docs.pola.rs/user-guide/io/bigquery/">BigQuery — Polars Docs</a> (the complete Polars↔BigQuery integration guide). Then: <a href="https://docs.cloud.google.com/python/docs/reference/bigquery/latest">Python Client for BigQuery — Google Cloud Docs</a> for the full API reference.</p>
+
+<div class="callout success">
+  <div class="callout-title">You Did It</div>
+  <p>You now have the complete picture: BigQuery's architecture (Lesson 001), its SQL dialect (Lesson 002), its platform capabilities (Lesson 003), and now the Python client to load data (this lesson). You have everything you need to implement <code>to_bigquery()</code> in your pipeline.</p>
+</div>
+
+<div class="footer">
+  <p>📌 Ask me anything about this lesson. Want to see the full working implementation for your project? Want to troubleshoot a specific error? Just ask.</p>
+</div>
+
+<script>
+function checkAnswer(el, correct) {
+  const quiz = el.closest('.quiz');
+  if (quiz.dataset.answered) return;
+  quiz.dataset.answered = 'true';
+  el.classList.add(correct ? 'correct' : 'wrong');
+  if (!correct) {
+    quiz.querySelectorAll('li').forEach(li => {
+      if (li !== el) li.classList.add('correct');
+    });
+  }
+}
+</script>
+
+</body>
+</html>

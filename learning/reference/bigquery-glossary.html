@@ -44,6 +44,19 @@
 <tr><td><strong>IAM</strong></td><td>Identity and Access Management. Controls who can do what on GCP resources. BigQuery has roles like dataViewer, dataEditor, jobUser.</td></tr>
 <tr><td><strong>Column-level security</strong></td><td>Hide specific columns from users who lack the required Fine-Grained Reader role.</td></tr>
 <tr><td><strong>Row-level security</strong></td><td>Filter rows per user based on policy conditions. Different users see different subsets of the same table.</td></tr>
+<tr><td><strong>Service account</strong></td><td>A non-human identity for applications (pipelines, VMs). Uses a JSON key file for authentication.</td></tr>
+<tr><td><strong>ADC</strong></td><td>Application Default Credentials. Standard way for Google Cloud client libraries to find credentials (env var, metadata server, etc.).</td></tr>
+</table>
+
+<h2>Python Client</h2>
+
+<table>
+<tr><th>Term</th><th>Definition</th></tr>
+<tr><td><strong>google-cloud-bigquery</strong></td><td>Official Python SDK for BigQuery. Provides Client class for queries, loads, and job management.</td></tr>
+<tr><td><strong>PyArrow</strong></td><td>Python bindings for Apache Arrow. Bridge between Polars and BigQuery — Polars converts to Arrow, BigQuery client accepts Arrow tables.</td></tr>
+<tr><td><strong>load_table_from_object</strong></td><td>Method to load an Arrow table (or DataFrame) into a BigQuery table. Core of the ETL load stage.</td></tr>
+<tr><td><strong>load_table_from_file</strong></td><td>Method to load from a file-like object (CSV, JSON, Parquet). Alternative to load_table_from_object.</td></tr>
+<tr><td><strong>Write disposition</strong></td><td>What happens when loading into an existing table: WRITE_TRUNCATE (overwrite), WRITE_APPEND (add), WRITE_EMPTY (fail if exists).</td></tr>
 </table>
 
 <h2>Data Model</h2>
@@ -97,7 +110,7 @@
 </table>
 
 <div class="footer">
-  <p>Lesson links: <a href="../lessons/0001-what-is-bigquery.html">001: What Is BigQuery?</a> · <a href="../lessons/0002-google-sql-basics.html">002: GoogleSQL Basics</a> · <a href="../lessons/0003-bigquery-core-capabilities.html">003: Core Capabilities</a></p>
+  <p>Lesson links: <a href="../lessons/0001-what-is-bigquery.html">001: What Is BigQuery?</a> · <a href="../lessons/0002-google-sql-basics.html">002: GoogleSQL Basics</a> · <a href="../lessons/0003-bigquery-core-capabilities.html">003: Core Capabilities</a> · <a href="../lessons/0004-python-client-bigquery.html">004: Python Client</a></p>
 </div>
 
 </body>
