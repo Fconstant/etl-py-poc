@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 005: Query Optimization & Performance</title>
+<link rel="stylesheet" href="../assets/lesson-style.css">
+</head>
+<body>
+
+<p style="font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-bottom: 2rem;">
+  Lesson 005 of ∞ &nbsp;·&nbsp; <a href="../MISSION.md">Mission</a> &nbsp;·&nbsp; <a href="../RESOURCES.md">Resources</a> &nbsp;·&nbsp; ← <a href="0004-python-client-bigquery.html">004</a>
+</p>
+
+<div class="meter">
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+</div>
+
+<h1>Query Optimization & Performance</h1>
+
+<p>You know what BigQuery is, how its SQL works, its platform capabilities, and how to load data. This lesson covers how to <em>debug and optimize</em> — the skill that separates someone who uses BigQuery from someone who <em>understands</em> it.</p>
+
+<h2>1. How BigQuery Executes Queries</h2>
+
+<p>When you run a query, BigQuery doesn't just "run it." It goes through a multi-stage pipeline:</p>
+
+<pre><code>Your SQL
+  → Parse & validate
+    → Query plan (Dremel converts to execution tree)
+      → Slot assignment (workers get slices of data)
+        → Parallel execution (each worker scans its slice)
+          → Result assembly
+            → Returned to you</code></pre>
+
+<p>The key insight: <strong>BigQuery parallelizes automatically</strong>. You don't manage threads, connections, or workers. But understanding this helps you optimize — because you're essentially paying for the work each worker does.</p>
+
+<h2>2. The Dry Run — Estimate Cost Before Execution</h2>
+
+<p>Before running a query, you can estimate how much data it will scan. This is the single most important cost-control tool.</p>
+
+<pre><code># Python client
+job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
+query_job = client.query("SELECT * FROM `big_table`", job_config=job_config)
+
+# Bytes scanned (not billed — it's a dry run)
+print(f"Will scan: {query_job.total_bytes_processed} bytes")
+print(f"Will scan: {int(query_job.total_bytes_processed) / 1024**3:.2f} GiB")</code></pre>
+
+<pre><code># SQL — set max_bytes_billed to block expensive queries
+SELECT *
+FROM `big_table`
+WHERE date >= '2026-01-01'
+-- Set via client: max_bytes_billed = 1 * 1024**3 (1 GB limit)</code></pre>
+
+<div class="callout info">
+  <div class="callout-title">The workflow</div>
+  <p>Always dry-run first. If the estimate is too high, rewrite the query. Then set <code>max_bytes_billed</code> as a safety net so no one accidentally runs an expensive query in production.</p>
+</div>
+
+<h2>3. Slot Utilization — Is Your Query starved?</h2>
+
+<p>Slots are BigQuery's virtual CPUs. More slots = faster query. On-demand pricing gives you access to a shared pool. Capacity pricing gives you reserved slots.</p>
+
+<p>You can see slot usage in the query execution details:</p>
+
+<pre><code># After a query runs, check the job statistics
+job = client.query("SELECT ...").result()
+
+# Slot milliseconds used
+print(f"Slot time: {job.slot_ms} ms")
+
+# Average slots used = slot_ms / elapsed_time_ms
+elapsed_ms = (job.ended - job.created).total_seconds() * 1000
+avg_slots = job.slot_ms / elapsed_ms
+print(f"Average slots: {avg_slots:.1f}")</code></pre>
+
+<p>If your query used 1 slot on average but could use 100, it's because BigQuery is conservative — it allocates slots based on data size and query complexity. Small queries on small tables don't need many slots.</p>
+
+<div class="callout warning">
+  <div class="callout-title">When slots matter</div>
+  <p>At your scale (~10K rows), slot utilization is irrelevant — queries complete in seconds. This becomes important when you're scanning gigabytes and wondering why a query takes 5 minutes instead of 30 seconds.</p>
+</div>
+
+<h2>4. Execution Details — What BigQuery Tells You</h2>
+
+<p>Every query job stores detailed statistics. This is your debugging tool.</p>
+
+<h3>INFORMATION_SCHEMA</h3>
+
+<p>BigQuery exposes metadata about your projects, datasets, tables, and jobs via SQL views:</p>
+
+<pre><code>-- See your recent queries and their costs
+SELECT
+  query,
+  total_bytes_billed,
+  total_bytes_processed,
+  creation_time,
+  end_time,
+  statement_type
+FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+ORDER BY total_bytes_billed DESC
+LIMIT 20;</code></pre>
+
+<pre><see what's in a dataset
+SELECT table_name, row_count, size_bytes
+FROM `your-project.etl_universities`.INFORMATION_SCHEMA.TABLES;</code></pre>
+
+<pre><see column details
+SELECT column_name, data_type, is_nullable
+FROM `your-project.etl_universities`.INFORMATION_SCHEMA.COLUMNS
+WHERE table_name = 'universities';</code></pre>
+
+<h3>Query Execution Details</h3>
+
+<p>After a query runs, the job object contains a full breakdown:</p>
+
+<pre><code>job = client.query("SELECT ...").result()
+
+# What stages ran
+for stage in job.statistics["query"]["executionInfo"]["dag"]["nodes"]:
+    print(f"Stage: {stage['id']}")
+    print(f"  Records read: {stage.get('recordsRead', 0)}")
+    print(f"  Bytes processed: {stage.get('bytesProcessed', 0)}")
+
+# Was the result cached?
+print(f"Cache hit: {job.cache_hit}")</code></pre>
+
+<h2>5. Query Cache — Free Reads</h2>
+
+<p>BigQuery caches query results for 24 hours. If you run the exact same query again, it returns the cached result — free, no bytes scanned.</p>
+
+<p>Conditions for cache hit:</p>
+<ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+  <li>Exact same SQL text (including whitespace)</li>
+  <li>Same user project</li>
+  <li>Same destination table (if applicable)</li>
+  <li>No changes to referenced tables since last run</li>
+</ul>
+
+<pre><code># Check if a query hit cache
+job = client.query("SELECT ...").result()
+if job.cache_hit:
+    print("Free read — cache hit!")
+else:
+    print(f"Scanned: {job.total_bytes_processed} bytes")</code></pre>
+
+<div class="callout info">
+  <div class="callout-title">Practical impact</div>
+  <p>If you run the same dashboard query every hour, you pay for it once — the other 23 runs are free (as long as the underlying data hasn't changed). This is a massive cost advantage for read-heavy workloads.</p>
+</div>
+
+<h2>6. Optimization Patterns Beyond the Basics</h2>
+
+<p>Lesson 002 covered the basics: don't <code>SELECT *</code>, filter early, <code>LIMIT</code> doesn't save cost. Here are the intermediate patterns.</p>
+
+<h3>Approximate Aggregations</h3>
+
+<p>When exact counts aren't necessary, BigQuery can approximate much faster:</p>
+
+<pre><code>-- Exact distinct count (scans everything)
+SELECT COUNT(DISTINCT user_id) FROM events;
+
+-- Approximate (1-2% error, but 10x faster)
+SELECT COUNT(DISTINCT user_id) FROM events;
+-- vs
+SELECT approx_count_distinct(user_id) FROM events;</code></pre>
+
+<h3>ANALYZE for Statistics</h3>
+
+<p>BigQuery collects column statistics automatically, but you can force an update:</p>
+
+<pre><code>ANALYZE TABLE `your-project.etl_universities.universities`;</code></pre>
+
+<p>This helps BigQuery's query planner make better decisions about join order and data skipping.</p>
+
+<h3>Clustered Table Queries</h3>
+
+<p>If you have a clustered table (Lesson 003), queries that filter on clustered columns automatically skip irrelevant blocks:</p>
+
+<pre><code>-- Table clustered by country, partitioned by date
+-- This query only scans European data blocks
+SELECT COUNT(*)
+FROM events
+WHERE country = 'Germany'
+  AND event_date = '2026-07-19';</code></pre>
+
+<h3>Temp Tables for Complex Logic</h3>
+
+<p>Use temp tables instead of CTEs when you need the same data multiple times:</p>
+
+<pre><code>-- CTE = re-scanned each time (billed twice)
+WITH data AS (SELECT * FROM big_table)
+SELECT COUNT(*) FROM data
+UNION ALL
+SELECT SUM(amount) FROM data;
+
+-- Temp table = scanned once (billed once)
+CREATE TEMP TABLE tmp AS SELECT * FROM big_table;
+SELECT COUNT(*) FROM tmp UNION ALL SELECT SUM(amount) FROM tmp;</code></pre>
+
+<h3>Struct Flattening</h3>
+
+<p>When loading nested JSON/Arrow data, BigQuery stores structs natively. Query them with dot notation instead of UNNEST for simpler syntax:</p>
+
+<pre><code>-- If address is a STRUCT column:
+SELECT address.city, address.country FROM users;
+
+-- vs UNNEST (only needed for arrays, not structs)
+SELECT addr.city FROM users, UNNEST(addresses) AS addr;</code></pre>
+
+<h2>7. Performance Debugging Workflow</h2>
+
+<p>When a query is slow or expensive, follow this sequence:</p>
+
+<ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+  <li><strong>Dry run</strong> — check estimated bytes scanned</li>
+  <li><strong>Check execution details</strong> — which stage took the most time?</li>
+  <li><strong>Check slot utilization</strong> — was the query slot-starved?</li>
+  <li><strong>Check partition/clustering</strong> — is the table structured for this query pattern?</li>
+  <li><strong>Check data volume</strong> — has the table grown since last measured?</li>
+  <li><strong>Check cache</strong> — is this query supposed to be cached? Why isn't it?</li>
+</ol>
+
+<pre><code># Quick diagnostic query
+SELECT
+  query,
+  total_bytes_processed / 1024 / 1024 AS mb_scanned,
+  total_bytes_billed / 1024 / 1024 AS mb_billed,
+  slot_ms / 1000 AS slot_seconds,
+  TIMESTAMP_DIFF(end_time, creation_time, SECOND) AS wall_seconds,
+  cache_hit
+FROM `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
+ORDER BY total_bytes_billed DESC
+LIMIT 10;</code></pre>
+
+<h2>8. Best Practices Checklist</h2>
+
+<table>
+<tr><th>Practice</th><th>Impact</th><th>Difficulty</th></tr>
+<tr><td>Never <code>SELECT *</code></td><td>High</td><td>Easy</td></tr>
+<tr><td>Dry run before production</td><td>High</td><td>Easy</td></tr>
+<tr><td>Set <code>max_bytes_billed</code></td><td>High</td><td>Easy</td></tr>
+<tr><td>Partition large tables by date</td><td>High</td><td>Medium</td></tr>
+<tr><td>Cluster by filter columns</td><td>Medium</td><td>Medium</td></tr>
+<tr><td>Use temp tables over CTEs for reuse</td><td>Medium</td><td>Easy</td></tr>
+<tr><td>Use <code>SAFE_DIVIDE</code> / <code>SAFE_CAST</code></td><td>Medium</td><td>Easy</td></tr>
+<tr><td>Leverage query cache</td><td>High</td><td>Free (automatic)</td></tr>
+<tr><td>Check INFORMATION_SCHEMA regularly</td><td>Medium</td><td>Easy</td></tr>
+<tr><td>Use approximate aggregations when acceptable</td><td>Low</td><td>Easy</td></tr>
+</table>
+
+<h2>Checkpoint Quiz</h2>
+
+<div class="quiz">
+  <div class="quiz-question">1. What does a dry run tell you?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Whether the query is syntactically correct</li>
+    <li onclick="checkAnswer(this, true)">B) How many bytes the query would scan</li>
+    <li onclick="checkAnswer(this, false)">C) How long the query will take</li>
+    <li onclick="checkAnswer(this, false)">D) Whether the result is cached</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">2. When does BigQuery return cached results for free?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Always — BigQuery caches everything</li>
+    <li onclick="checkAnswer(this, true)">B) Same SQL text, same project, no table changes in 24 hours</li>
+    <li onclick="checkAnswer(this, false)">C) Only for queries with LIMIT</li>
+    <li onclick="checkAnswer(this, false)">D) Only on capacity pricing</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">3. A query takes 5 minutes but scans only 100 MB. What's likely the bottleneck?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Too many bytes scanned</li>
+    <li onclick="checkAnswer(this, true)">B) Slot starvation — not enough parallel workers</li>
+    <li onclick="checkAnswer(this, false)">C) Cache miss</li>
+    <li onclick="checkAnswer(this, false)">D) Wrong partition filter</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">4. What's the main advantage of temp tables over CTEs for repeated data?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Temp tables are faster to create</li>
+    <li onclick="checkAnswer(this, false)">B) Temp tables support more SQL features</li>
+    <li onclick="checkAnswer(this, true)">C) Temp tables are scanned once; CTEs are re-scanned per reference</li>
+    <li onclick="checkAnswer(this, false)">D) Temp tables persist after the query</li>
+  </ul>
+</div>
+
+<h2>Primary Source</h2>
+
+<p>Read: <a href="https://docs.cloud.google.com/bigquery/docs/best-practices-performance-overview">Performance Best Practices — Google Cloud Docs</a>. Then: <a href="https://cloud.google.com/bigquery/docs/querying-system-catalogs">Introduction to Information Schema</a> for the metadata deep-dive.</p>
+
+<div class="callout success">
+  <div class="callout-title">You Did It</div>
+  <p>You now know how to debug and optimize BigQuery queries: dry runs, execution details, slot utilization, cache, and the optimization patterns that matter. This is the knowledge that separates "I've used BigQuery" from "I understand BigQuery."</p>
+</div>
+
+<div class="footer">
+  <p>📌 Ask me anything about this lesson. Want to walk through a real query optimization? Want to see INFORMATION_SCHEMA queries for your actual project? Just ask.</p>
+</div>
+
+<script>
+function checkAnswer(el, correct) {
+  const quiz = el.closest('.quiz');
+  if (quiz.dataset.answered) return;
+  quiz.dataset.answered = 'true';
+  el.classList.add(correct ? 'correct' : 'wrong');
+  if (!correct) {
+    quiz.querySelectorAll('li').forEach(li => {
+      if (li !== el) li.classList.add('correct');
+    });
+  }
+}
+</script>
+
+</body>
+</html>
