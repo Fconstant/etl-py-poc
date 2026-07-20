@@ -1,5 +1,5 @@
 from src.extract.cache import get_countries, get_universities
-from src.load.loader import to_csv, to_parquet
+from src.load import to_bigquery, to_csv, to_parquet
 from src.transform.aggregate import (
     top10_countries,
     universities_per_continent,
@@ -10,7 +10,7 @@ from src.transform.join_data import join_data
 from src.transform.normalize import normalize_countries, normalize_universities
 
 
-def run() -> None:
+def run(export_bigquery: bool = False) -> None:
     countries_raw = get_countries()
     universities_raw = get_universities()
 
@@ -26,12 +26,15 @@ def run() -> None:
     top10 = top10_countries(enriched)
 
     for df, name in [
+        (enriched, "universities"),
         (by_country, "universities_per_country"),
         (by_continent, "universities_per_continent"),
         (top10, "top10_universities"),
     ]:
         to_csv(df, name)
         to_parquet(df, name)
+        if export_bigquery:
+            to_bigquery(df, name)
 
     print(
         f"Pipeline complete: {len(countries_raw)} countries, "

@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from src.extract.cache import save_cache
 from src.extract.fetch_countries import fetch_countries
 from src.extract.fetch_universities import fetch_universities
+from src.pipeline.export_bq import export_to_bigquery
 from src.pipeline.run import run as run_pipeline
 from src.utils.log import setup_logging
 from src.view.report import generate_report
@@ -29,8 +30,20 @@ def extract() -> None:
 
 
 @app.command()
-def run() -> None:
-    run_pipeline()
+def run(
+    export_bigquery: bool = typer.Option(
+        False,
+        "--export-bigquery",
+        "--export-bq",
+        help="Upload results to BigQuery",
+    ),
+) -> None:
+    run_pipeline(export_bigquery=export_bigquery)
+
+
+@app.command()
+def export_bq() -> None:
+    export_to_bigquery()
 
 
 @app.command()
