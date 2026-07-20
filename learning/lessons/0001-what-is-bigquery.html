@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 001: What Is BigQuery?</title>
+<link rel="stylesheet" href="../assets/lesson-style.css">
+</head>
+<body>
+
+<p style="font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-bottom: 2rem;">
+  Lesson 001 of ∞ &nbsp;·&nbsp; <a href="../MISSION.md">Mission</a> &nbsp;·&nbsp; <a href="../RESOURCES.md">Resources</a>
+</p>
+
+<div class="meter">
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment"></div>
+  <div class="meter-segment"></div>
+  <div class="meter-segment"></div>
+  <div class="meter-segment"></div>
+</div>
+
+<h1>What Is BigQuery?</h1>
+
+<p>You've spent years building apps with Postgres. You know rows, indexes, connection pools, <code>VACUUM</code>. BigQuery is a different beast. This lesson builds the mental model.</p>
+
+<h2>The One-Liner</h2>
+
+<blockquote>
+BigQuery is Google Cloud's serverless data warehouse. You throw data at it, write SQL, and it gives you answers — fast, at any scale, with zero infrastructure.
+</blockquote>
+
+<h2>BigQuery vs What You Know</h2>
+
+<p>As a fullstack dev, your mental model is probably:</p>
+
+<pre><code>App → Postgres (row store, OLTP) → App
+     ↑ writes rows one at a time
+     ↑ reads specific records by ID/index</code></pre>
+
+<p>BigQuery flips this:</p>
+
+<pre><code>Data sources → BigQuery (column store, OLAP) → Analysts/Dashboards
+              ↑ bulk loads (thousands to billions of rows)
+              ↑ scans entire columns across millions of rows</code></pre>
+
+<div class="callout info">
+  <div class="callout-title">Key Insight</div>
+  <p>Postgres is optimized for <strong>OLTP</strong> (online transactional processing) — fast writes, fast lookups by primary key, handling thousands of concurrent users. BigQuery is optimized for <strong>OLAP</strong> (online analytical processing) — fast aggregation across billions of rows, scanning specific columns.</p>
+</div>
+
+<h2>The Architecture (Simplified)</h2>
+
+<p>Two things make BigQuery fundamentally different from a traditional database:</p>
+
+<h3>1. Columnar Storage</h3>
+
+<p>Postgres stores data <strong>row by row</strong>:</p>
+
+<pre><code>Row 1: [42, "Brazil", "BR", "South America", 214000000]
+Row 2: [87, "Germany", "DE", "Europe", 83000000]
+Row 3: [12, "Japan", "JP", "Asia", 125000000]</code></pre>
+
+<p>BigQuery stores data <strong>column by column</strong>:</p>
+
+<pre><code>university_count: [42, 87, 12]
+country:          ["Brazil", "Germany", "Japan"]
+iso_code:         ["BR", "DE", "JP"]
+continent:        ["South America", "Europe", "Asia"]
+population:       [214000000, 83000000, 125000000]</code></pre>
+
+<p>Why this matters: if your query is <code>SELECT country, SUM(university_count) GROUP BY continent</code>, BigQuery only reads two columns — not all five. On a table with 100 columns and 10 billion rows, this is the difference between seconds and hours.</p>
+
+<h3>2. Separated Compute and Storage</h3>
+
+<p>In Postgres, the same server handles both storing data and running queries. In BigQuery, they're independent:</p>
+
+<ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+  <li><strong>Storage</strong> (Colossus): Your data lives here, replicated across multiple locations automatically</li>
+  <li><strong>Compute</strong> (Dremel): Thousands of workers run your query in parallel, then results are assembled</li>
+</ul>
+
+<p>This means you can store petabytes without paying for idle compute. You only pay for compute when queries run.</p>
+
+<div class="callout warning">
+  <div class="callout-title">Cost Implication</div>
+  <p>On-demand pricing charges <strong>$6.25 per TiB scanned</strong> (first 1 TiB/month free). BigQuery charges for columns scanned, not rows returned. <code>SELECT *</code> on a wide table is expensive. <code>SELECT country, population</code> is cheap.</p>
+</div>
+
+<h2>The Hierarchy</h2>
+
+<p>BigQuery organizes data in a hierarchy you need to internalize:</p>
+
+<pre><code>GCP Project
+  └── Dataset (like a schema in Postgres)
+        └── Table (like a table in Postgres)
+              └── Column (field)</code></pre>
+
+<p>In your ETL pipeline, the ADR-002 decision maps to:</p>
+
+<pre><code>Project: your-gcp-project
+  └── Dataset: etl_universities
+        ├── Table: universities          (raw enriched data)
+        ├── Table: universities_per_country
+        ├── Table: universities_per_continent
+        └── Table: top10_universities</code></pre>
+
+<h2>What BigQuery Is NOT</h2>
+
+<ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+  <li><strong>Not a replacement for Postgres.</strong> Your app's database stays Postgres. BigQuery is for analytics on data you've already collected.</li>
+  <li><strong>Not a streaming platform.</strong> It handles batch loads well; streaming is possible but not its sweet spot.</li>
+  <li><strong>Not a general-purpose compute engine.</strong> It runs SQL queries. It doesn't run your Python transform logic (that stays in Polars — see <a href="../../docs/adr/003-keep-polars-transforms.md">ADR-003</a>).</li>
+  <li><strong>Not free beyond the sandbox.</strong> The free tier is generous for small projects, but poorly written queries on large tables can surprise you.</li>
+</ul>
+
+<h2>Checkpoint Quiz</h2>
+
+<div class="quiz" id="quiz1">
+  <div class="quiz-question">1. What does BigQuery charge for on the on-demand pricing model?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Rows returned by the query</li>
+    <li onclick="checkAnswer(this, true)">B) Columns scanned (bytes processed)</li>
+    <li onclick="checkAnswer(this, false)">C) Time the query runs</li>
+    <li onclick="checkAnswer(this, false)">D) Number of tables referenced</li>
+  </ul>
+</div>
+
+<div class="quiz" id="quiz2">
+  <div class="quiz-question">2. Why does BigQuery use columnar storage instead of row-based storage?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) It's easier to implement</li>
+    <li onclick="checkAnswer(this, false)">B) It uses less disk space for small tables</li>
+    <li onclick="checkAnswer(this, true)">C) Analytical queries scan specific columns across many rows</li>
+    <li onclick="checkAnswer(this, false)">D) It supports faster individual record lookups</li>
+  </ul>
+</div>
+
+<div class="quiz" id="quiz3">
+  <div class="quiz-question">3. In the BigQuery hierarchy, a dataset is most similar to what in Postgres?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, true)">A) A schema</li>
+    <li onclick="checkAnswer(this, false)">B) A table</li>
+    <li onclick="checkAnswer(this, false)">C) A database</li>
+    <li onclick="checkAnswer(this, false)">D) An index</li>
+  </ul>
+</div>
+
+<h2>Primary Source</h2>
+
+<p>Read: <a href="https://docs.cloud.google.com/bigquery/docs/introduction">BigQuery Overview — Google Cloud Docs</a> (the first 3 sections: "What is BigQuery", "How it works", "Architecture"). This is the canonical reference.</p>
+
+<div class="callout success">
+  <div class="callout-title">You Did It</div>
+  <p>You now understand the fundamental mental model: BigQuery is a columnar, serverless data warehouse where you pay for columns scanned, not rows returned. This is the lens through which every subsequent lesson will make sense.</p>
+</div>
+
+<div class="footer">
+  <p>📌 Ask me anything about this lesson. Confused about columnar storage? Want to see a Postgres vs BigQuery comparison with real queries? Just ask.</p>
+  <p style="margin-top: 0.5rem;">Next: <a href="0002-google-sql-basics.html">Lesson 002 — GoogleSQL Basics</a></p>
+</div>
+
+<script>
+function checkAnswer(el, correct) {
+  const quiz = el.closest('.quiz');
+  if (quiz.dataset.answered) return;
+  quiz.dataset.answered = 'true';
+  el.classList.add(correct ? 'correct' : 'wrong');
+  if (!correct) {
+    quiz.querySelectorAll('li').forEach(li => {
+      if (li !== el) li.classList.add('correct');
+    });
+  }
+}
+</script>
+
+</body>
+</html>

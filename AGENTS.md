@@ -31,10 +31,25 @@ Before finishing any task: `uv run ruff check . && uv run ruff format --check . 
 - Pydantic models only at extract boundary (`src/models/`); everything after is Polars.
 - Prefer Polars lazy (`scan_*`, `LazyFrame`) until final `collect()`.
 - Country-name normalization: stdlib `difflib.get_close_matches()` (cutoff 0.8) — no fuzzy-matching deps.
-- CLI: Typer app in `main.py`, command `run`.
+- CLI: Typer app in `src/cli.py`, commands `extract` (fetch APIs + write cache) and `run` (full pipeline, cache-first).
+- Extract cache: `src/extract/cache.py` — Parquet per source in `data/cache/`, TTL 1 day via file mtime; `run` falls back to APIs and updates cache when stale/missing.
 - Layout: `src/{extract,transform,load,pipeline,models,utils}` per design doc.
 
 ## Workflow
 
 - Spec-driven via OpenSpec. Active change: `openspec/changes/poc-etl-pipeline/` (proposal, design, tasks, specs). Implement by following `tasks.md`; use the `openspec-apply-change` skill.
 - Docs/specs are PT-BR; code, comments, and commits in English.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues for `Fconstant/etl-py-poc`, operated via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles mapped 1:1 to `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 env/
 .env/
+.pytest_cache/
 
 # uv
 .uv/
@@ -12,9 +13,11 @@ env/
 # ruff
 .ruff_cache/
 
-# Data output
-data/output/*
+# Data folder
+data/*
+!data/country_aliases.json
 
 # env
 .env*
 !.env.example
+.gcp/

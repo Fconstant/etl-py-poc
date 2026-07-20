@@ -5,10 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "google-cloud-bigquery>=3.42.2",
     "httpx>=0.28.1",
     "polars>=1.42.1",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
+    "tabulate>=0.10.0",
     "typer>=0.27.0",
 ]
 
@@ -20,7 +22,7 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.pyright]
-include = ["src", "main.py", "tests"]
+include = ["src"]
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
 # polars stubs are incomplete — downstream operations on DataFrames are untyped
