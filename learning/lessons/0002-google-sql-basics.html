@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 002: GoogleSQL Basics</title>
+<link rel="stylesheet" href="../assets/lesson-style.css">
+</head>
+<body>
+
+<p style="font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-bottom: 2rem;">
+  Lesson 002 of ∞ &nbsp;·&nbsp; <a href="../MISSION.md">Mission</a> &nbsp;·&nbsp; <a href="../RESOURCES.md">Resources</a> &nbsp;·&nbsp; ← <a href="0001-what-is-bigquery.html">001</a>
+</p>
+
+<div class="meter">
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment filled"></div>
+  <div class="meter-segment"></div>
+  <div class="meter-segment"></div>
+  <div class="meter-segment"></div>
+</div>
+
+<h1>GoogleSQL Basics</h1>
+
+<p>You know Postgres SQL. BigQuery uses <strong>GoogleSQL</strong> — ANSI-compliant, but with differences that will bite you if you copy-paste from Postgres. This lesson covers the syntax that changes, the cost patterns baked into query writing, and the idiom shifts you need.</p>
+
+<h2>The Big Four Differences</h2>
+
+<h3>1. Backticks, Not Quotes</h3>
+
+<p>In Postgres, you escape reserved words and special identifiers with double quotes. In BigQuery, you use backticks:</p>
+
+<pre><code>-- Postgres
+SELECT "user", "order" FROM "my-schema"."my-table";
+
+-- BigQuery (GoogleSQL)
+SELECT `user`, `order` FROM `my-dataset.my-table`;</code></pre>
+
+<div class="callout info">
+  <div class="callout-title">Rule of thumb</div>
+  <p>Double quotes in Postgres → backticks in BigQuery. Always. Column names with spaces, hyphens, or reserved words all need backticks.</p>
+</div>
+
+<h3>2. Table References Use Dots, Not Schemas</h3>
+
+<p>Postgres: <code>schema.table</code>. BigQuery: <code>dataset.table</code>. The project can be prepended with a dot too:</p>
+
+<pre><code>-- Postgres
+SELECT * FROM analytics.users;
+
+-- BigQuery
+SELECT * FROM `etl_universities.universities`;
+
+-- With explicit project (rare, usually set as default)
+SELECT * FROM `my-project.etl_universities.universities`;</code></pre>
+
+<h3>3. No PostgreSQL-Specific Functions</h3>
+
+<p>Functions you use daily in Postgres don't exist in BigQuery. Here's the cheat sheet:</p>
+
+<table>
+<tr><th>Postgres</th><th>BigQuery (GoogleSQL)</th><th>Notes</th></tr>
+<tr><td><code>NOW()</code></td><td><code>CURRENT_TIMESTAMP()</code></td><td>Both return UTC timestamp</td></tr>
+<tr><td><code>CURRENT_DATE</code></td><td><code>CURRENT_DATE()</code></td><td>BigQuery uses function call syntax</td></tr>
+<tr><td><code>ILIKE '%foo%'</code></td><td><code>LOWER(col) LIKE '%foo%'</code></td><td>No case-insensitive LIKE</td></tr>
+<tr><td><code>col::INT</code></td><td><code>CAST(col AS INT64)</code></td><td>No cast-with-colon syntax</td></tr>
+<tr><td><code>SERIAL</code></td><td>No equivalent</td><td>Use <code>GENERATE_UUID()</code> or <code>ROW_NUMBER()</code></td></tr>
+<tr><td><code>JSONB</code></td><td>No equivalent</td><td>Use <code>STRUCT</code> or <code>STRING</code> (store JSON as text)</td></tr>
+<tr><td><code>UUID</code></td><td><code>STRING</code></td><td>Store UUIDs as strings</td></tr>
+<tr><td><code>INET</code></td><td><code>STRING</code></td><td>No network types</td></tr>
+<tr><td><code>ARRAY[]</code></td><td><code>ARRAY&lt;type&gt;[]</code></td><td>Typed arrays in BigQuery</td></tr>
+<tr><td><code>STRING_AGG(col, ',')</code></td><td><code>STRING_AGG(col, ',')</code></td><td>Same! One of the few.</td></tr>
+<tr><td><code>EXTRACT(dow FROM date)</code></td><td><code>EXTRACT(DAYOFWEEK FROM date)</code></td><td>Different extraction names</td></tr>
+</table>
+
+<h3>4. Data Types Are Simpler</h3>
+
+<p>Postgres has many integer types. BigQuery collapses them:</p>
+
+<pre><code>-- Postgres: SMALLINT, INTEGER, BIGINT, SERIAL, etc.
+-- BigQuery: just INT64
+
+-- Postgres: FLOAT, DOUBLE PRECISION, NUMERIC
+-- BigQuery: FLOAT64 (float) and NUMERIC (exact decimal)</code></pre>
+
+<div class="callout warning">
+  <div class="callout-title">Gotcha: Division</div>
+  <p>In Postgres, <code>7 / 2</code> returns <code>3</code> (integer division). In BigQuery, <code>7 / 2</code> returns <code>3.5</code> (FLOAT64). Use <code>DIV(7, 2)</code> for integer division. This will silently change your aggregation results.</p>
+</div>
+
+<h2>Cost-Aware Query Patterns</h2>
+
+<p>These patterns directly impact your BigQuery bill. On-demand pricing: <strong>$6.25 per TiB scanned</strong>.</p>
+
+<h3>Pattern 1: Never SELECT *</h3>
+
+<pre><code>-- BAD: Scans every column ($$$)
+SELECT * FROM `etl_universities.universities`;
+
+-- GOOD: Scan only what you need ($)
+SELECT university_name, country, continent
+FROM `etl_universities.universities`;</code></pre>
+
+<p>On a 100-column table, selecting 3 columns costs 97% less than <code>SELECT *</code>.</p>
+
+<h3>Pattern 2: Filter Early</h3>
+
+<pre><code>-- BAD: Join then filter
+SELECT u.university_name, c.population
+FROM `etl_universities.universities` u
+JOIN `etl_universities.countries` c ON u.iso_code = c.iso_code
+WHERE c.continent = 'Europe';
+
+-- GOOD: Filter before join (subquery reduces join size)
+SELECT u.university_name, c.population
+FROM (
+  SELECT university_name, iso_code
+  FROM `etl_universities.universities`
+) u
+JOIN (
+  SELECT iso_code, population
+  FROM `etl_universities.countries`
+  WHERE continent = 'Europe'
+) c ON u.iso_code = c.iso_code;</code></pre>
+
+<h3>Pattern 3: LIMIT Doesn't Reduce Cost</h3>
+
+<pre><code>-- This STILL scans the entire table:
+SELECT * FROM `etl_universities.universities`
+ORDER BY university_name
+LIMIT 10;
+
+-- You're billed for every column in every row,
+-- even though only 10 are returned.</code></pre>
+
+<div class="callout warning">
+  <div class="callout-title">Trap for Postgres devs</div>
+  <p>In Postgres, LIMIT is a performance hint — the planner can stop early. In BigQuery, LIMIT is applied <strong>after</strong> the full scan. You still pay for the whole table. The one exception: on <strong>clustered</strong> tables, LIMIT can stop scanning early once enough blocks are found.</p>
+</div>
+
+<h3>Pattern 4: Avoid Repeated CTEs</h3>
+
+<pre><code>-- BAD: CTE used twice = scanned twice (billed twice)
+WITH data AS (
+  SELECT * FROM `big_table`
+)
+SELECT COUNT(*) FROM data
+UNION ALL
+SELECT SUM(amount) FROM data;
+
+-- GOOD: Use a temp table if you need the data twice
+CREATE TEMP TABLE tmp AS
+SELECT * FROM `big_table`;
+
+SELECT COUNT(*) FROM tmp
+UNION ALL
+SELECT SUM(amount) FROM tmp;</code></pre>
+
+<p>CTEs in BigQuery are inlined (like macros), not materialized. Each reference re-scans the source.</p>
+
+<h3>Pattern 5: Use SAFE Functions to Avoid Errors</h3>
+
+<pre><code>-- This fails on division by zero:
+SELECT amount / 0 FROM `transactions`;
+
+-- This returns NULL on division by zero (safe):
+SELECT SAFE_DIVIDE(amount, 0) FROM `transactions`;
+
+-- SAFE_CAST returns NULL instead of failing:
+SELECT SAFE_CAST(invalid_col AS INT64) FROM `data`;</code></pre>
+
+<h2>The GoogleSQL Extras</h2>
+
+<p>GoogleSQL has features Postgres doesn't:</p>
+
+<h3>QUALIFY — Filter Window Functions Inline</h3>
+
+<pre><code>-- Postgres: subquery needed
+SELECT * FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY country ORDER BY population DESC) as rn
+  FROM universities
+) WHERE rn = 1;
+
+-- BigQuery: QUALIFY makes it clean
+SELECT *, ROW_NUMBER() OVER (PARTITION BY country ORDER BY population DESC) as rn
+FROM universities
+QUALIFY rn = 1;</code></pre>
+
+<h3>SELECT * EXCEPT — Drop Columns From Results</h3>
+
+<pre><code>-- Select everything EXCEPT the auto-generated row_number
+SELECT * EXCEPT(rn) FROM (
+  SELECT *, ROW_NUMBER() OVER (...) as rn
+  FROM universities
+) WHERE rn = 1;</code></pre>
+
+<h3>UNNEST — Explode Arrays Into Rows</h3>
+
+<pre><code>-- If you have an ARRAY column:
+SELECT tag FROM `posts`, UNNEST(tags) AS tag;
+
+-- Equivalent in Postgres would be:
+-- SELECT unnest(tags) FROM posts; (similar but syntax differs)</code></pre>
+
+<h2>Checkpoint Quiz</h2>
+
+<div class="quiz">
+  <div class="quiz-question">1. What does <code>7 / 2</code> return in BigQuery GoogleSQL?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) 3</li>
+    <li onclick="checkAnswer(this, true)">B) 3.5</li>
+    <li onclick="checkAnswer(this, false)">C) 3.0</li>
+    <li onclick="checkAnswer(this, false)">D) Error</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">2. How do you escape a column named <code>order</code> in BigQuery?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) "order"</li>
+    <li onclick="checkAnswer(this, false)">B) [order]</li>
+    <li onclick="checkAnswer(this, true)">C) `order`</li>
+    <li onclick="checkAnswer(this, false)">D) 'order'</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">3. Why is <code>LIMIT</code> alone not a cost control in BigQuery?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) BigQuery doesn't support LIMIT</li>
+    <li onclick="checkAnswer(this, true)">B) LIMIT is applied after the full table scan</li>
+    <li onclick="checkAnswer(this, false)">C) LIMIT only works on clustered tables</li>
+    <li onclick="checkAnswer(this, false)">D) LIMIT doubles the scan cost</li>
+  </ul>
+</div>
+
+<div class="quiz">
+  <div class="quiz-question">4. What happens when a CTE is referenced twice in BigQuery?</div>
+  <ul class="quiz-options">
+    <li onclick="checkAnswer(this, false)">A) Results are cached automatically</li>
+    <li onclick="checkAnswer(this, true)">B) The source is scanned twice (billed twice)</li>
+    <li onclick="checkAnswer(this, false)">C) BigQuery optimizes it into a join</li>
+    <li onclick="checkAnswer(this, false)">D) The query fails</li>
+  </ul>
+</div>
+
+<h2>Primary Source</h2>
+
+<p>Read: <a href="https://cloud.google.com/bigquery/docs/introduction-sql">Introduction to SQL in BigQuery — Google Cloud Docs</a> (focus on "GoogleSQL" and "Query syntax" sections). Also bookmark: <a href="https://cloud.google.com/bigquery/docs/reference/standard-sql/migrating-from-legacy-sql">Migrating to GoogleSQL</a> for function mapping.</p>
+
+<div class="callout success">
+  <div class="callout-title">You Did It</div>
+  <p>You now know the Postgres→GoogleSQL syntax shifts that matter, and the five cost-aware query patterns that will keep your bills low. The key takeaway: BigQuery charges for bytes scanned, so every query decision (which columns, which filters, which joins) is a cost decision.</p>
+</div>
+
+<div class="footer">
+  <p>📌 Ask me about anything here. Want to see a side-by-side Postgres vs BigQuery query for your actual ETL data? Want to practice writing cost-efficient queries? Just ask.</p>
+  <p style="margin-top: 0.5rem;">Next: <a href="0003-bigquery-core-capabilities.html">Lesson 003 — BigQuery Core Capabilities</a></p>
+</div>
+
+<script>
+function checkAnswer(el, correct) {
+  const quiz = el.closest('.quiz');
+  if (quiz.dataset.answered) return;
+  quiz.dataset.answered = 'true';
+  el.classList.add(correct ? 'correct' : 'wrong');
+  if (!correct) {
+    quiz.querySelectorAll('li').forEach(li => {
+      if (li !== el) li.classList.add('correct');
+    });
+  }
+}
+</script>
+
+</body>
+</html>

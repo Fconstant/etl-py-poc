@@ -12,12 +12,12 @@ from src.utils.log import setup_logging
 from src.view.report import generate_report
 
 load_dotenv()
+setup_logging()
 app = typer.Typer()
 
 
 @app.command()
 def extract() -> None:
-    setup_logging()
     countries = fetch_countries()
     save_cache(countries, "countries")
     universities = fetch_universities()
@@ -30,7 +30,6 @@ def extract() -> None:
 
 @app.command()
 def run() -> None:
-    setup_logging()
     run_pipeline()
 
 
