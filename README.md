@@ -37,6 +37,7 @@ Local cache has a 1-day TTL (invalidated by file modification time). `etl extrac
 `etl run` is local-only by default. BigQuery upload requires `--export-bigquery` (also aliased `--export-bq`); failures are logged as warnings but do not stop the pipeline. `etl export-bq` reads the 4 Parquet files from `data/output/` and uploads them to BigQuery — it fails with a non-zero exit code if any file is missing or any write fails.
 
 Outputs in `data/output/`:
+
 - `universities.csv` / `.parquet` (enriched raw data)
 - `universities_per_country.csv` / `.parquet`
 - `universities_per_continent.csv` / `.parquet`
@@ -114,6 +115,7 @@ O cache local tem TTL de 1 dia (invalidado pela data de gravação do arquivo). 
 `etl run` é só local por padrão. O upload ao BigQuery requer `--export-bigquery` (alias `--export-bq`); falhas são logadas como warnings mas não interrompem o pipeline. `etl export-bq` lê os 4 arquivos Parquet de `data/output/` e sobe ao BigQuery — falha com código de saída não-zero se algum arquivo estiver ausente ou alguma escrita falhar.
 
 Resultados em `data/output/`:
+
 - `universities.csv` / `.parquet` (dados enriquecidos brutos)
 - `universities_per_country.csv` / `.parquet`
 - `universities_per_continent.csv` / `.parquet`

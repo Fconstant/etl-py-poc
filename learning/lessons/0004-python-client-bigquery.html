@@ -26,12 +26,21 @@
 
 <h2>The Flow</h2>
 
-<pre><code>Polars DataFrame
-  → PyArrow Table  (in-memory, columnar)
-    → BigQuery API  (upload + load job)
-      → BigQuery Table  (stored in Colossus)</code></pre>
+<p>Two paths from Polars to BigQuery, depending on your dependencies:</p>
 
-<p>PyArrow is the bridge. Polars speaks Arrow natively; BigQuery's Python client accepts Arrow tables. No CSVs, no JSON, no serialization overhead.</p>
+<pre><code># Path A: Arrow (zero-copy, requires pyarrow)
+Polars DataFrame
+  → PyArrow Table  (in-memory, columnar)
+    → load_table_from_object()
+      → BigQuery Table
+
+# Path B: Parquet (native Polars write, no extra deps)
+Polars DataFrame
+  → Parquet buffer  (BytesIO, serialized)
+    → load_table_from_file()
+      → BigQuery Table</code></pre>
+
+<p>Both work. Path A is simpler and zero-copy. Path B avoids the <code>pyarrow</code> dependency entirely — Polars has a native Parquet writer built in (Rust), so <code>write_parquet()</code> needs no extra packages. The BigQuery client reads Parquet natively too.</p>
 
 <h2>1. Authentication</h2>
 
@@ -96,6 +105,52 @@ job = client.load_table_from_object(
 job.result()  # blocks until load completes</code></pre>
 
 <p><code>to_arrow()</code> is zero-copy because Polars is built on Apache Arrow internally. No data is serialized — the Arrow format is shared between Polars and the BigQuery client.</p>
+
+<div class="callout warning">
+  <div class="callout-title">to_arrow() requires pyarrow</div>
+  <p><code>df.to_arrow()</code> delegates to pyarrow under the hood. If <code>pyarrow</code> is not installed, it raises <code>ModuleNotFoundError: No module named 'pyarrow'</code>. If your project intentionally avoids pyarrow (to keep the dependency tree small), use the Parquet path below instead.</p>
+</div>
+
+<h2>2b. Alternative: Parquet via load_table_from_file</h2>
+
+<p>Polars can write Parquet natively — no pyarrow needed. The BigQuery client can read Parquet files directly. This gives you a working path without adding any dependencies:</p>
+
+<pre><code>from io import BytesIO
+import polars as pl
+from google.cloud import bigquery
+
+# Your Polars DataFrame
+df: pl.DataFrame = ...  # from transform stage
+
+# Step 1: Write to in-memory Parquet buffer (native Polars — no pyarrow)
+buf = BytesIO()
+df.write_parquet(buf)
+buf.seek(0)
+
+# Step 2: Load into BigQuery from the Parquet buffer
+table_ref = "your-project.etl_universities.universities"
+job_config = bigquery.LoadJobConfig(
+    source_format=bigquery.SourceFormat.PARQUET,
+    write_disposition="WRITE_TRUNCATE",
+)
+job = client.load_table_from_file(buf, table_ref, job_config=job_config)
+
+# Step 3: Wait for the job to finish
+job.result()  # blocks until load completes</code></pre>
+
+<p>Parquet preserves type information just as well as Arrow (int64 → INT64, string → STRING, etc.). The trade-off is a serialize/deserialize roundtrip — Polars writes Parquet bytes, BigQuery re-parses them — but at small scale this is negligible.</p>
+
+<h3>Which path should you use?</h3>
+
+<table>
+<tr><th>Criterion</th><th>Arrow (<code>load_table_from_object</code>)</th><th>Parquet (<code>load_table_from_file</code>)</th></tr>
+<tr><td>Extra dependencies</td><td>Requires <code>pyarrow</code></td><td>None (Polars has native Parquet)</td></tr>
+<tr><td>Data conversion</td><td>Zero-copy</td><td>Serialize → deserialize roundtrip</td></tr>
+<tr><td>Type fidelity</td><td>Excellent (Arrow ↔ BQ native)</td><td>Excellent (Parquet ↔ BQ native)</td></tr>
+<tr><td>Code complexity</td><td>Simpler (3 lines)</td><td>Slightly more (BytesIO + seek)</td></tr>
+</table>
+
+<p>This project uses the Parquet path because it keeps the dependency tree small — no pyarrow required. If you add <code>pyarrow</code> later, the Arrow path is the idiomatic choice.</p>
 
 <h2>3. Write Dispositions</h2>
 
