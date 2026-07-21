@@ -106,11 +106,11 @@ WHERE creation_time > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 ORDER BY total_bytes_billed DESC
 LIMIT 20;</code></pre>
 
-<pre><see what's in a dataset
+<pre><code>-- See what's in a dataset
 SELECT table_name, row_count, size_bytes
 FROM `your-project.etl_universities`.INFORMATION_SCHEMA.TABLES;</code></pre>
 
-<pre><see column details
+<pre><code>-- See column details
 SELECT column_name, data_type, is_nullable
 FROM `your-project.etl_universities`.INFORMATION_SCHEMA.COLUMNS
 WHERE table_name = 'universities';</code></pre>
